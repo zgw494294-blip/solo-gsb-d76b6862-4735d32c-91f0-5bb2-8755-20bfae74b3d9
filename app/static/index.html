@@ -1,0 +1,1733 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DNA 虚拟平切酶酶切图谱</title>
+<style>
+  :root {
+    --border: #cfd8dc;
+    --accent: #1565c0;
+    --accent-light: #e3f2fd;
+    --danger: #c62828;
+    --ok: #2e7d32;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: #263238;
+    background: #f5f7fa;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 24px 20px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .subtitle { color: #607d8b; font-size: 13px; margin-bottom: 20px; }
+  section.card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
+  }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  label.field { display: block; font-weight: 600; font-size: 14px; margin: 10px 0 6px; }
+  textarea {
+    width: 100%;
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    resize: vertical;
+  }
+  textarea:focus, input:focus { outline: 2px solid var(--accent-light); border-color: var(--accent); }
+  .meta { font-size: 13px; color: #607d8b; margin-top: 4px; }
+  .radio-row { margin-top: 10px; display: flex; gap: 20px; }
+  .radio-row label { font-weight: 400; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #eceff1; font-weight: 600; }
+  .enzyme-table input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 5px 7px;
+    font-size: 13px;
+  }
+  .enzyme-table input.esite { font-family: var(--mono); }
+  .btn {
+    display: inline-block;
+    border: 1px solid var(--accent);
+    background: #fff;
+    color: var(--accent);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .btn:hover { background: var(--accent-light); }
+  .btn.primary { background: var(--accent); color: #fff; font-size: 15px; padding: 9px 28px; }
+  .btn.primary:hover { background: #0d47a1; }
+  .btn.del { border-color: #b0bec5; color: #546e7a; padding: 4px 10px; }
+  .btn.del:hover { background: #ffebee; color: var(--danger); border-color: var(--danger); }
+  .toolbar { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; }
+  .run-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  #error {
+    display: none;
+    background: #ffebee;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 14px;
+    margin-bottom: 16px;
+    white-space: pre-line;
+  }
+  .summary { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+  .chip {
+    background: var(--accent-light);
+    border: 1px solid #90caf9;
+    border-radius: 999px;
+    padding: 4px 14px;
+    font-size: 13px;
+  }
+  .chip.uncut { background: #fff8e1; border-color: #ffb300; color: #7c5700; font-weight: 600; }
+  code.seq {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+  .note { color: #8d6e00; font-size: 12px; }
+  .end-note { color: #607d8b; font-size: 12px; }
+  .tag {
+    display: inline-block;
+    background: #e8f5e9;
+    border: 1px solid #a5d6a7;
+    color: var(--ok);
+    border-radius: 4px;
+    padding: 0 6px;
+    margin: 1px 4px 1px 0;
+    font-size: 12px;
+  }
+  .hit-detail { color: #546e7a; font-family: var(--mono); font-size: 12px; }
+  .legend { font-size: 12.5px; color: #546e7a; margin-top: 6px; }
+  .redesign-warn {
+    background: #fff8e1;
+    border: 1px solid #ffb300;
+    color: #7c5700;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+  .seq-box {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    background: #fafafa;
+    max-height: 180px;
+    overflow: auto;
+  }
+  .seq-row { margin-bottom: 4px; font-size: 12.5px; color: #607d8b; }
+  .fill-row { margin-top: 10px; }
+  .infer-grid { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .infer-grid .cell { flex: 1 1 220px; }
+  .infer-grid .cell.narrow { flex: 0 1 150px; }
+  .infer-grid input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 7px 9px;
+    font-size: 13px;
+  }
+  .infer-bands { font-family: var(--mono); }
+  .status-required { background: #e3f2fd; border-color: #1565c0; color: #0d47a1; font-weight: 600; }
+  .status-optional { background: #fff8e1; border-color: #ffb300; color: #7c5700; }
+  .status-impossible { background: #f5f5f5; border-color: #b0bec5; color: #546e7a; }
+  .infer-warn {
+    background: #ffebee;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+  .rule-sample {
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+  .rule-sample-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>DNA 虚拟平切酶酶切图谱</h1>
+  <div class="subtitle">本地运行 · FastAPI 计算 · 支持 IUPAC 简并碱基、双向匹配、重叠匹配与环状跨界</div>
+
+  <section class="card">
+    <h2>DNA 序列</h2>
+    <textarea id="sequence" rows="6" spellcheck="false"
+      placeholder="粘贴 4～5000 位 A/C/G/T 序列，可跨行（空白与换行自动忽略）"></textarea>
+    <div class="meta">当前长度：<strong id="seqLen">0</strong> bp</div>
+    <div class="radio-row">
+      <label><input type="radio" name="topology" value="linear" checked> 线性（linear）</label>
+      <label><input type="radio" name="topology" value="circular"> 环状（circular）</label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>酶规则（1～8 条，ID 唯一）</h2>
+    <table class="enzyme-table">
+      <thead>
+        <tr>
+          <th style="width:15%">酶 ID</th>
+          <th style="width:29%">识别串（IUPAC，3～12 位）</th>
+          <th style="width:20%">切割偏移（0～串长）</th>
+          <th style="width:22%">单点切开概率（0～1）</th>
+          <th style="width:14%"></th>
+        </tr>
+      </thead>
+      <tbody id="enzymeRows"></tbody>
+    </table>
+    <div class="toolbar">
+      <span class="legend">偏移从识别串起点起算（0 基边界）；反向命中切在 起点 + 串长 − 偏移。概率仅用于部分酶切丰度分析（完全酶切计算视为必然切开）。IUPAC：R=A/G Y=C/T S=G/C W=A/T K=G/T M=A/C B=C/G/T D=A/G/T H=A/C/T V=A/C/G N=任意。</span>
+      <button class="btn" id="addEnzyme" type="button">+ 添加酶</button>
+    </div>
+  </section>
+
+  <div id="error"></div>
+  <div class="run-row">
+    <button class="btn primary" id="run" type="button">开始酶切计算</button>
+    <button class="btn primary" id="runPartial" type="button">部分酶切丰度分析</button>
+    <button class="btn" id="runRedesign" type="button">同义移除位点</button>
+    <button class="btn" id="runInference" type="button">观测条带反推</button>
+    <button class="btn" id="runIsolation" type="button">目标片段分离设计</button>
+    <button class="btn" id="runAssembly" type="button">平切片段拼接</button>
+  </div>
+  <div class="legend" style="margin:8px 0 0;">
+    “同义移除位点”仅使用线性 DNA（6～300 位、长度为 3 的倍数）与 1～3 条识别串长 3～6 位的酶，
+    忽略切割偏移与概率；从首碱基按标准遗传密码表分组，仅替换同义密码子。
+  </div>
+
+  <section class="card" id="inferenceCard" style="margin-top:18px;">
+    <h2>观测条带反推参数</h2>
+    <div class="legend" style="margin-bottom:10px;">
+      复用上方 DNA 序列、拓扑与全部 1～8 条酶规则（按完全酶切处理，<strong>忽略单点切开概率</strong>）。
+      枚举包括<strong>空酶组合</strong>在内的全部酶组合，预测片段长度按多重集与观测配对。
+    </div>
+    <div class="infer-grid">
+      <div class="cell">
+        <label class="field" for="inferBands">观测条带长度（正整数，1～40 个，逗号/空白分隔，重复长度保留）</label>
+        <input class="infer-bands" id="inferBands" type="text" spellcheck="false"
+          placeholder="如 6, 9, 9, 6">
+      </div>
+      <div class="cell narrow">
+        <label class="field" for="inferTolerance">容差（0～10 bp）</label>
+        <input id="inferTolerance" type="number" min="0" max="10" step="1" value="0">
+      </div>
+      <div class="cell narrow">
+        <label class="field" for="inferMissing">允许漏检数（0～2 条）</label>
+        <input id="inferMissing" type="number" min="0" max="2" step="1" value="0">
+      </div>
+    </div>
+    <div class="legend" style="margin-top:8px;">
+      配对规则：每条观测须与一条<strong>不同的</strong>预测片段配对且绝对差 ≤ 容差；
+      未配对预测片段数 ≤ 允许漏检数；不允许出现多余观测。
+    </div>
+  </section>
+
+  <section class="card" id="isolationCard" style="margin-top:18px;">
+    <h2>目标片段分离设计参数</h2>
+    <div class="legend" style="margin-bottom:10px;">
+      复用上方 DNA 序列、拓扑与全部 1～8 条酶规则（按完全酶切处理，<strong>忽略单点切开概率</strong>）。
+      枚举全部<strong>非空</strong>酶组合，只保留切后存在<strong>恰好覆盖目标区间</strong>的片段、
+      且目标片段长度与<strong>每条</strong>其他片段长度之差的绝对值均 ≥ 最小条带间距的组合。
+    </div>
+    <div class="infer-grid">
+      <div class="cell narrow">
+        <label class="field" for="isoStart">目标起点（0 基）</label>
+        <input id="isoStart" type="number" min="0" step="1" value="6">
+      </div>
+      <div class="cell narrow">
+        <label class="field" for="isoEnd">目标终点（0 基半开）</label>
+        <input id="isoEnd" type="number" min="0" step="1" value="15">
+      </div>
+      <div class="cell narrow">
+        <label class="field" for="isoSpacing">最小条带间距（1～5000 bp）</label>
+        <input id="isoSpacing" type="number" min="1" max="5000" step="1" value="3">
+      </div>
+    </div>
+    <div class="legend" style="margin-top:8px;">
+      线性：0 ≤ 起点 &lt; 终点 ≤ 序列长度，且区间须短于全长；序列两端为<strong>天然边界</strong>，
+      目标端点落在 0 或全长处时无需实际切点。环状：起点、终点均在 [0, 长度) 且不相等，
+      起点 &gt; 终点表示<strong>跨原点</strong>，目标两端均须形成<strong>实际切点</strong>。
+      结果按 酶数升序 → 最小实际间距降序 → 酶 ID 字典序 排列。
+      预置示例可试：切换到环状拓扑，目标区间 [24, 6)（跨原点）、间距 3 bp，可得到可行组合。
+    </div>
+  </section>
+
+  <section class="card" id="assemblyCard" style="margin-top:18px;">
+    <h2>平切片段拼接参数</h2>
+    <div class="legend" style="margin-bottom:10px;">
+      复用上方 DNA 序列、拓扑与全部 1～8 条酶规则做<strong>完全酶切</strong>（<strong>忽略单点切开概率</strong>），
+      片段编号沿用完全酶切结果；<strong>未切开的环状分子不可作为原料</strong>，片段数超过 16 条时拒绝计算。
+      从所得片段中选取若干条（每个编号最多用一次，同序列不同编号分别计库存），每条可按
+      <strong>+ 原序列</strong>或<strong>− 反向互补</strong>使用，只允许<strong>完整片段首尾直连</strong>，
+      拼接结果须与目标<strong>逐位相等</strong>。求<strong>片段数最少</strong>的方案；并列时依次比较路径中的
+      （数字编号、方向），编号小者优先，同编号 + 先于 −（子集动态规划合并等价状态，不枚举全部排列）。
+    </div>
+    <label class="field" for="asmTarget">目标线性序列（1～5000 位 A/C/G/T，空白自动忽略）</label>
+    <textarea id="asmTarget" rows="3" spellcheck="false"
+      placeholder="如 ATCAAAGATAAAGAT（片段 3 反向互补 + 片段 1 原序列）"></textarea>
+    <div class="meta">目标长度：<strong id="asmTargetLen">0</strong> bp</div>
+  </section>
+
+  <section class="card" id="circularMapCard" style="margin-top:18px;">
+    <h2>环状双酶图谱重建</h2>
+    <div class="legend" style="margin-bottom:10px;">
+      <strong>只依据实验长度</strong>，不需要 DNA 序列或酶识别串：假定同一环状分子被完全切开、
+      A、B 切点互不重合，输入 A、B 各自单酶切及 A+B 双酶切的片段长度多重集（重复长度按出现次数计）。
+      枚举双酶片段的环上次序与边界的 A/B 归属，只保留能同时重现两组单酶长度多重集的图谱；
+      旋转与镜像视为同一图谱，每类取（切点标签, 其后间距）序列字典序最小的表示并据此从 0 计坐标。
+    </div>
+    <div class="infer-grid">
+      <div class="cell">
+        <label class="field" for="cmA">A 单酶切片段长度（1～3 片，逗号/空白分隔）</label>
+        <input class="infer-bands" id="cmA" type="text" spellcheck="false" placeholder="如 10">
+      </div>
+      <div class="cell">
+        <label class="field" for="cmB">B 单酶切片段长度（1～3 片，逗号/空白分隔）</label>
+        <input class="infer-bands" id="cmB" type="text" spellcheck="false" placeholder="如 4, 6">
+      </div>
+      <div class="cell">
+        <label class="field" for="cmDouble">A+B 双酶切片段长度（2～6 片，逗号/空白分隔）</label>
+        <input class="infer-bands" id="cmDouble" type="text" spellcheck="false" placeholder="如 2, 4, 4">
+      </div>
+    </div>
+    <div class="legend" style="margin-top:8px;">
+      前提：各长度为正整数；三组总长相等且为 4～5000 bp；双酶切片段数 = A、B 单酶切片段数之和。
+      违反前提返回 HTTP 400；前提满足但无图谱能重现两组单酶长度时明确说明无解。
+    </div>
+    <div class="run-row" style="margin-top:10px;">
+      <button class="btn primary" id="runCircularMap" type="button">重建环状图谱</button>
+    </div>
+  </section>
+
+  <section class="card" id="ruleInferenceCard" style="margin-top:18px;">
+    <h2>未知酶规则反推</h2>
+    <div class="legend" style="margin-bottom:10px;">
+      录入 <strong>1～3 份</strong> DNA 样本（各 <strong>6～300 bp</strong>、仅 A/C/G/T，空白自动忽略），
+      每份给定拓扑与实测的 0 基切点边界（线性 0～序列长度，环状 0～长度−1，同一样本内不得重复；
+      全部样本合计至少一个切点，单份可为空）。假定<strong>同一虚拟平切酶</strong>在所有样本上
+      <strong>完全切开</strong>：识别串只含 A/C/G/T、长 <strong>3～6 位</strong>，切割偏移
+      <strong>0～串长</strong>；沿用双向查找、允许重叠、环状跨界匹配与同一边界合并规则。
+      找出使每份样本的<strong>预测切点集合与实测严格相等</strong>的全部规则；
+      （识别串, 偏移）与（反向互补串, 串长−偏移）视为同一规则，取字典序较小的表示，
+      结果按（串长, 识别串, 偏移）排序。
+    </div>
+    <div id="ruleSamples"></div>
+    <div class="toolbar">
+      <span class="legend">候选规则由实测切点最少的非空样本枚举（覆盖切点的 3～6 位窗口正/反两方向），再逐条在全部样本上验证。</span>
+      <button class="btn" id="addRuleSample" type="button">+ 添加样本</button>
+    </div>
+    <div class="run-row" style="margin-top:10px;">
+      <button class="btn primary" id="runRuleInference" type="button">反推酶规则</button>
+    </div>
+  </section>
+
+  <section class="card" id="discriminationCard" style="margin-top:18px;">
+    <h2>样本鉴别酶组合</h2>
+    <div class="legend" style="margin-bottom:10px;">
+      录入 <strong>2～5 份</strong> DNA 样本（各 <strong>4～5000 bp</strong>、仅 A/C/G/T，空白自动忽略），
+      每份各自选择线性或环状；<strong>共用上方 1～8 条酶规则</strong>（现有格式，按完全酶切处理，
+      <strong>忽略单点切开概率</strong>；识别串不得长于任一样本），并输入 <strong>0～10 bp</strong> 条带容差。
+      枚举全部<strong>非空</strong>酶组合，对每份样本按双向查找、允许重叠、环状跨界匹配与同一边界合并规则
+      完全酶切；片段长度<strong>保留重复并升序排列</strong>。两份样本若片段数相同且对应长度差均不超过容差，
+      则视为<strong>不可区分</strong>，否则可区分。只返回能使所有样本<strong>两两可区分</strong>且
+      <strong>用酶数最少</strong>的全部组合（按酶 ID 字典序排列）。
+    </div>
+    <div id="discSamples"></div>
+    <div class="toolbar">
+      <span class="legend">各酶在各样本上的切点只扫描一次，组合的切点为各酶边界之并，不会对每种组合重新扫描序列。</span>
+      <button class="btn" id="addDiscSample" type="button">+ 添加样本</button>
+    </div>
+    <div class="infer-grid" style="margin-top:10px;">
+      <div class="cell narrow">
+        <label class="field" for="discTolerance">条带容差（0～10 bp）</label>
+        <input id="discTolerance" type="number" min="0" max="10" step="1" value="0">
+      </div>
+    </div>
+    <div class="run-row" style="margin-top:10px;">
+      <button class="btn primary" id="runDiscrimination" type="button">鉴别样本</button>
+    </div>
+  </section>
+
+  <section class="card" id="discriminationResults" style="margin-top:18px; display:none;">
+    <h2>样本鉴别酶组合结果</h2>
+    <div id="discriminationBody"></div>
+  </section>
+
+  <section class="card" id="ruleInferenceResults" style="margin-top:18px; display:none;">
+    <h2>未知酶规则反推结果</h2>
+    <div id="ruleInferenceBody"></div>
+  </section>
+
+  <section class="card" id="circularMapResults" style="margin-top:18px; display:none;">
+    <h2>环状双酶图谱重建结果</h2>
+    <div id="circularMapBody"></div>
+  </section>
+
+  <section class="card" id="results" style="margin-top:18px; display:none;">
+    <h2>计算结果</h2>
+    <div class="summary" id="summary"></div>
+
+    <h2 style="margin-top:16px;">切点（0 基碱基边界坐标）</h2>
+    <table>
+      <thead>
+        <tr><th style="width:14%">边界坐标</th><th style="width:30%">对应酶（已合并）</th><th>命中明细</th></tr>
+      </thead>
+      <tbody id="cutBody"></tbody>
+    </table>
+    <div class="legend">命中明细格式：酶 ID / 链方向（+ 识别串，− 反向互补串）/ 匹配起点。</div>
+
+    <h2 style="margin-top:20px;">酶切片段</h2>
+    <table>
+      <thead>
+        <tr><th style="width:5%">#</th><th style="width:16%">区间 [起, 止)</th><th style="width:10%">长度 (bp)</th><th>序列</th></tr>
+      </thead>
+      <tbody id="fragmentBody"></tbody>
+    </table>
+  </section>
+
+  <section class="card" id="partialResults" style="margin-top:18px; display:none;">
+    <h2>部分酶切丰度分析</h2>
+    <div class="summary" id="partialSummary"></div>
+
+    <h2 style="margin-top:16px;">边界切开概率</h2>
+    <table>
+      <thead>
+        <tr><th style="width:14%">边界坐标</th><th style="width:26%">对应酶（已合并）</th><th style="width:16%">边界切开概率</th><th>命中明细</th></tr>
+      </thead>
+      <tbody id="partialCutBody"></tbody>
+    </table>
+    <div class="legend">同一酶在同一边界的重复命中只计一次；边界切开概率 = 1 −（各酶未切概率之积）；各边界之间相互独立。线性序列两端（0、n）为固定端点，端点命中不另增片段。</div>
+
+    <h2 style="margin-top:20px;">片段丰度表（每份原始分子的期望片段数）</h2>
+    <table>
+      <thead>
+        <tr><th style="width:16%">片段长度 (bp)</th><th style="width:20%">期望片段数</th><th>类型</th></tr>
+      </thead>
+      <tbody id="abundanceBody"></tbody>
+    </table>
+    <div class="legend">环状两种全长结果分别统计：完整环＝零切点事件；全长线性＝单切点事件。期望按各片段区间的出现概率求和，未枚举全部切开组合。</div>
+  </section>
+
+  <section class="card" id="redesignResults" style="margin-top:18px; display:none;">
+    <h2>同义移除位点结果</h2>
+    <div id="redesignBody"></div>
+  </section>
+
+  <section class="card" id="inferenceResults" style="margin-top:18px; display:none;">
+    <h2>观测条带反推结果</h2>
+    <div id="inferenceBody"></div>
+  </section>
+
+  <section class="card" id="isolationResults" style="margin-top:18px; display:none;">
+    <h2>目标片段分离设计结果</h2>
+    <div id="isolationBody"></div>
+  </section>
+
+  <section class="card" id="assemblyResults" style="margin-top:18px; display:none;">
+    <h2>平切片段拼接结果</h2>
+    <div id="assemblyBody"></div>
+  </section>
+</div>
+
+<script>
+"use strict";
+
+const enzymeRows = document.getElementById("enzymeRows");
+const sequenceInput = document.getElementById("sequence");
+const seqLenSpan = document.getElementById("seqLen");
+const errorBox = document.getElementById("error");
+
+// ---------- 酶规则行 ----------
+function addEnzymeRow(id = "", site = "", offset = "", prob = "1") {
+  if (enzymeRows.rows.length >= 8) {
+    alert("最多录入 8 条酶规则");
+    return;
+  }
+  const tr = document.createElement("tr");
+  tr.innerHTML =
+    '<td><input class="e-id" type="text" placeholder="如 E1"></td>' +
+    '<td><input class="e-site" type="text" spellcheck="false" placeholder="如 GATATC"></td>' +
+    '<td><input class="e-offset" type="number" min="0" max="12" step="1" placeholder="0～串长"></td>' +
+    '<td><input class="e-prob" type="number" min="0" max="1" step="0.05" placeholder="0～1"></td>' +
+    '<td><button class="btn del" type="button">删除</button></td>';
+  tr.querySelector(".e-id").value = id;
+  tr.querySelector(".e-site").value = site;
+  tr.querySelector(".e-offset").value = offset;
+  tr.querySelector(".e-prob").value = prob;
+  tr.querySelector(".del").addEventListener("click", () => {
+    if (enzymeRows.rows.length <= 1) {
+      alert("至少保留 1 条酶规则");
+      return;
+    }
+    tr.remove();
+  });
+  enzymeRows.appendChild(tr);
+}
+
+document.getElementById("addEnzyme").addEventListener("click", () => addEnzymeRow());
+
+function cleanSequence() {
+  return sequenceInput.value.replace(/\s+/g, "").toUpperCase();
+}
+
+sequenceInput.addEventListener("input", () => {
+  seqLenSpan.textContent = cleanSequence().length;
+});
+
+// ---------- 前端校验 ----------
+const IUPAC_RE = /^[ACGTRYSWKMBDHVN]+$/;
+const DNA_RE = /^[ACGT]+$/;
+
+function showError(msg) {
+  errorBox.textContent = msg;
+  errorBox.style.display = "block";
+}
+function clearError() {
+  errorBox.textContent = "";
+  errorBox.style.display = "none";
+}
+
+function buildRequest(options = {}) {
+  const checkProbability = options.checkProbability !== false;
+  const sequence = cleanSequence();
+  if (sequence.length < 4 || sequence.length > 5000) {
+    throw new Error(`DNA 序列长度须为 4～5000 bp（当前 ${sequence.length} bp）`);
+  }
+  if (!DNA_RE.test(sequence)) {
+    throw new Error("DNA 序列只能包含 A、C、G、T 字符");
+  }
+
+  const topology = document.querySelector('input[name="topology"]:checked').value;
+  const seen = new Set();
+  const enzymes = [];
+
+  for (const row of enzymeRows.rows) {
+    const id = row.querySelector(".e-id").value.trim();
+    const site = row.querySelector(".e-site").value.replace(/\s+/g, "").toUpperCase();
+    const offsetRaw = row.querySelector(".e-offset").value.trim();
+    const offset = Number(offsetRaw);
+    const probRaw = row.querySelector(".e-prob").value.trim();
+    const prob = Number(probRaw);
+
+    if (!id) throw new Error("每条酶规则都必须填写 ID");
+    if (seen.has(id)) throw new Error(`酶 ID 重复：${id}`);
+    seen.add(id);
+
+    if (site.length < 3 || site.length > 12) {
+      throw new Error(`酶 ${id} 的识别串长度须为 3～12 位（当前 ${site.length} 位）`);
+    }
+    if (!IUPAC_RE.test(site)) {
+      throw new Error(`酶 ${id} 的识别串含非法 IUPAC 字符`);
+    }
+    if (site.length > sequence.length) {
+      throw new Error(`酶 ${id} 的识别串（${site.length} 位）长于 DNA 序列（${sequence.length} 位）`);
+    }
+    if (offsetRaw === "" || !Number.isInteger(offset) || offset < 0 || offset > site.length) {
+      throw new Error(`酶 ${id} 的切割偏移须为 0～${site.length} 的整数`);
+    }
+    if (checkProbability) {
+      if (probRaw === "" || !Number.isFinite(prob) || prob < 0 || prob > 1) {
+        throw new Error(`酶 ${id} 的单点切开概率须为 0～1 之间的数`);
+      }
+    }
+    if (checkProbability) {
+      enzymes.push({ id, site, offset, cut_probability: prob });
+    } else {
+      enzymes.push({ id, site, offset });
+    }
+  }
+
+  if (enzymes.length < 1 || enzymes.length > 8) {
+    throw new Error("酶规则数量须为 1～8 条");
+  }
+  return { sequence, topology, enzymes };
+}
+
+// ---------- 结果渲染 ----------
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function render(data) {
+  const topoText = data.topology === "circular" ? "环状" : "线性";
+  const chips = [
+    `<span class="chip">拓扑：${topoText}</span>`,
+    `<span class="chip">序列长度：${data.length} bp</span>`,
+    `<span class="chip">切点数：${data.cut_count}</span>`,
+    `<span class="chip">片段数：${data.fragment_count}</span>`,
+  ];
+  if (data.uncut) {
+    chips.push('<span class="chip uncut">未切开（零切点）</span>');
+  }
+  document.getElementById("summary").innerHTML = chips.join("");
+
+  const cutBody = document.getElementById("cutBody");
+  if (data.cut_sites.length === 0) {
+    cutBody.innerHTML = '<tr><td colspan="3" class="end-note">未找到任何切点。</td></tr>';
+  } else {
+    cutBody.innerHTML = data.cut_sites.map((site) => {
+      const atEnd = data.topology === "linear" && (site.position === 0 || site.position === data.length);
+      const tags = site.enzymes.map((e) => `<span class="tag">${escapeHtml(e)}</span>`).join("");
+      const detail = site.hits
+        .map((h) => `${escapeHtml(h.enzyme)} ${h.strand} @${h.match_start}`)
+        .join("；");
+      return `<tr>
+        <td><strong>${site.position}</strong>${atEnd ? '<div class="end-note">位于序列末端，不额外产生片段</div>' : ""}</td>
+        <td>${tags}</td>
+        <td class="hit-detail">${escapeHtml(detail)}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  const fragmentBody = document.getElementById("fragmentBody");
+  fragmentBody.innerHTML = data.fragments.map((f) => {
+    const range = data.topology === "circular" && f.note && f.note.includes("打开")
+      ? `${f.start} → ${f.end}（环化起点）`
+      : f.note && f.note.includes("跨原点")
+        ? `${f.start} → ${f.end}（跨原点）`
+        : `[${f.start}, ${f.end})`;
+    const note = f.note ? `<div class="note">${escapeHtml(f.note)}</div>` : "";
+    return `<tr>
+      <td>${f.index}</td>
+      <td>${range}</td>
+      <td>${f.length}</td>
+      <td><code class="seq">${escapeHtml(f.sequence)}</code>${note}</td>
+    </tr>`;
+  }).join("");
+
+  document.getElementById("results").style.display = "block";
+}
+
+// ---------- 部分酶切丰度渲染 ----------
+const KIND_LABELS = {
+  fragment: "普通片段",
+  circular_uncut: "完整环（零切点）",
+  linear_full: "全长线性片段（单切点）",
+};
+
+function fmtNum(x) {
+  if (x === 0) return "0";
+  if (Math.abs(x) >= 1e-4) return String(parseFloat(x.toFixed(4)));
+  return x.toExponential(2);
+}
+
+function renderPartial(data) {
+  const topoText = data.topology === "circular" ? "环状" : "线性";
+  const chips = [
+    `<span class="chip">拓扑：${topoText}</span>`,
+    `<span class="chip">序列长度：${data.length} bp</span>`,
+    `<span class="chip">切点数：${data.cut_count}</span>`,
+    `<span class="chip">期望片段总数：${fmtNum(data.expected_fragment_count)}</span>`,
+  ];
+  document.getElementById("partialSummary").innerHTML = chips.join("");
+
+  const partialCutBody = document.getElementById("partialCutBody");
+  if (data.cut_sites.length === 0) {
+    partialCutBody.innerHTML = '<tr><td colspan="4" class="end-note">未找到任何切点。</td></tr>';
+  } else {
+    partialCutBody.innerHTML = data.cut_sites.map((site) => {
+      const atEnd = data.topology === "linear" && (site.position === 0 || site.position === data.length);
+      const tags = site.enzymes.map((e) => `<span class="tag">${escapeHtml(e)}</span>`).join("");
+      const detail = site.hits
+        .map((h) => `${escapeHtml(h.enzyme)} ${h.strand} @${h.match_start}`)
+        .join("；");
+      return `<tr>
+        <td><strong>${site.position}</strong>${atEnd ? '<div class="end-note">固定端点，不另增片段</div>' : ""}</td>
+        <td>${tags}</td>
+        <td>${fmtNum(site.cut_probability)}</td>
+        <td class="hit-detail">${escapeHtml(detail)}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  document.getElementById("abundanceBody").innerHTML = data.abundance.map((row) => {
+    const label = KIND_LABELS[row.kind] || row.kind;
+    const kindCell = row.kind === "fragment"
+      ? label
+      : `<span class="chip uncut" style="padding:1px 8px;">${label}</span>`;
+    return `<tr>
+      <td>${row.length}</td>
+      <td>${fmtNum(row.expected_count)}</td>
+      <td>${kindCell}</td>
+    </tr>`;
+  }).join("");
+
+  document.getElementById("partialResults").style.display = "block";
+}
+
+// ---------- 请求 ----------
+async function runCalculation(btn, idleText, url, onData, payloadBuilder = buildRequest) {
+  clearError();
+  let payload;
+  try {
+    payload = payloadBuilder();
+  } catch (e) {
+    showError(e.message);
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "计算中…";
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      showError(data.detail || `计算失败（HTTP ${resp.status}）`);
+      return;
+    }
+    onData(data);
+  } catch (e) {
+    showError("请求失败：" + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = idleText;
+  }
+}
+
+document.getElementById("run").addEventListener("click", () => {
+  const btn = document.getElementById("run");
+  runCalculation(btn, "开始酶切计算", "/api/digest", render);
+});
+
+document.getElementById("runPartial").addEventListener("click", () => {
+  const btn = document.getElementById("runPartial");
+  runCalculation(btn, "部分酶切丰度分析", "/api/partial-digest", renderPartial);
+});
+
+// ---------- 同义移除位点 ----------
+function buildRedesignRequest() {
+  const sequence = cleanSequence();
+  if (sequence.length < 6 || sequence.length > 300) {
+    throw new Error(`同义移除位点仅接受长度 6～300 bp 的 DNA（当前 ${sequence.length} bp）`);
+  }
+  if (sequence.length % 3 !== 0) {
+    throw new Error(`DNA 长度必须为 3 的倍数才能从首碱基按密码子分组（当前 ${sequence.length} bp）`);
+  }
+  if (!DNA_RE.test(sequence)) {
+    throw new Error("DNA 序列只能包含 A、C、G、T 字符");
+  }
+
+  const topology = document.querySelector('input[name="topology"]:checked').value;
+  if (topology !== "linear") {
+    throw new Error("同义移除位点仅支持线性（linear）序列");
+  }
+
+  if (enzymeRows.rows.length < 1 || enzymeRows.rows.length > 3) {
+    throw new Error(`同义移除位点须选择 1～3 条酶（当前 ${enzymeRows.rows.length} 条）`);
+  }
+
+  const seen = new Set();
+  const enzymes = [];
+  for (const row of enzymeRows.rows) {
+    const id = row.querySelector(".e-id").value.trim();
+    const site = row.querySelector(".e-site").value.replace(/\s+/g, "").toUpperCase();
+    if (!id) throw new Error("每条酶规则都必须填写 ID");
+    if (seen.has(id)) throw new Error(`酶 ID 重复：${id}`);
+    seen.add(id);
+    if (site.length < 3 || site.length > 6) {
+      throw new Error(`酶 ${id} 的识别串长度须为 3～6 位（当前 ${site.length} 位）`);
+    }
+    if (!IUPAC_RE.test(site)) {
+      throw new Error(`酶 ${id} 的识别串含非法 IUPAC 字符`);
+    }
+    enzymes.push({ id, site });
+  }
+  return { sequence, topology, enzymes };
+}
+
+function renderRedesign(data) {
+  const body = document.getElementById("redesignBody");
+
+  const enzymeTags = data.enzymes
+    .map((e) => {
+      const palindrome = e.site === e.reverse_complement;
+      const rc = palindrome ? "回文，反向互补串相同"
+        : `反向互补串 ${escapeHtml(e.reverse_complement)}`;
+      return `<div><span class="tag">${escapeHtml(e.id)}</span>`
+        + `<code class="seq">${escapeHtml(e.site)}</code>`
+        + `<span class="hit-detail">（${rc}）</span></div>`;
+    })
+    .join("");
+
+  const headChips = [
+    `<span class="chip">序列长度：${data.length} bp</span>`,
+    `<span class="chip">密码子数：${data.codon_count}</span>`,
+  ];
+
+  if (!data.solvable) {
+    body.innerHTML =
+      `<div class="summary">${headChips.join("")}</div>`
+      + `<div class="redesign-warn"><strong>无解：</strong>${escapeHtml(data.message.replace(/^无解：/, ""))}</div>`
+      + `<div class="meta">目标识别串（含反向互补串）：</div>`
+      + enzymeTags
+      + `<div class="meta" style="margin-top:8px;">氨基酸序列（未变）：`
+      + `<code class="seq">${escapeHtml(data.amino_acid_sequence)}</code></div>`;
+    document.getElementById("redesignResults").style.display = "block";
+    return;
+  }
+
+  let changesHtml;
+  if (data.changes.length === 0) {
+    changesHtml = '<div class="legend">无需改动：原序列已不含任何目标识别串及其反向互补串的命中。</div>';
+  } else {
+    const rows = data.changes.map((c) => `<tr>
+      <td>${c.position}</td>
+      <td>${c.codon_index}</td>
+      <td>${c.codon_position}</td>
+      <td><code class="seq">${escapeHtml(c.original)}</code></td>
+      <td><code class="seq">${escapeHtml(c.replacement)}</code></td>
+    </tr>`).join("");
+    changesHtml = `
+      <h2 style="margin-top:16px;">替换明细（0 基坐标）</h2>
+      <table>
+        <thead><tr>
+          <th style="width:14%">碱基坐标</th>
+          <th style="width:14%">密码子序号（0 基）</th>
+          <th style="width:16%">密码子内位置（0 基）</th>
+          <th style="width:14%">原碱基</th>
+          <th style="width:14%">替换为</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="legend">0 基替换坐标列表：<code class="seq">[${data.positions.join(", ")}]</code></div>`;
+  }
+
+  body.innerHTML =
+    `<div class="summary">`
+    + headChips.join("")
+    + `<span class="chip">改动碱基数：<strong>${data.changed_count}</strong></span>`
+    + `</div>`
+    + `<div class="meta" style="margin-bottom:8px;">目标识别串（含反向互补串）：</div>`
+    + enzymeTags
+    + `<div style="margin-top:10px;">氨基酸序列（未变）：`
+    + `<code class="seq">${escapeHtml(data.amino_acid_sequence)}</code></div>`
+    + changesHtml
+    + `<h2 style="margin-top:16px;">结果序列</h2>`
+    + `<div class="seq-box"><code class="seq" id="redesignSeq">${escapeHtml(data.redesigned_sequence)}</code></div>`
+    + `<div class="fill-row"><button class="btn primary" id="fillBack" type="button">将结果填回 DNA 输入</button></div>`;
+
+  document.getElementById("fillBack").addEventListener("click", () => {
+    sequenceInput.value = data.redesigned_sequence;
+    seqLenSpan.textContent = cleanSequence().length;
+  });
+  document.getElementById("redesignResults").style.display = "block";
+}
+
+document.getElementById("runRedesign").addEventListener("click", () => {
+  clearError();
+  let payload;
+  try {
+    payload = buildRedesignRequest();
+  } catch (e) {
+    showError(e.message);
+    return;
+  }
+  const btn = document.getElementById("runRedesign");
+  const idleText = "同义移除位点";
+  btn.disabled = true;
+  btn.textContent = "重设计中…";
+  fetch("/api/synonymous-redesign", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+    .then((resp) => resp.json().then((d) => ({ ok: resp.ok, d })))
+    .then(({ ok, d }) => {
+      if (!ok) {
+        showError(d.detail || "重设计失败");
+        return;
+      }
+      renderRedesign(d);
+    })
+    .catch((e) => showError("请求失败：" + e.message))
+    .finally(() => {
+      btn.disabled = false;
+      btn.textContent = idleText;
+    });
+});
+
+// ---------- 观测条带反推 ----------
+const ENZYME_STATUS_LABELS = {
+  required: "必有",
+  optional: "可有",
+  impossible: "不可能",
+};
+
+function buildInferenceRequest() {
+  // 复用 DNA/拓扑/酶规则校验；反推做完全酶切，不校验、不上传概率
+  const base = buildRequest({ checkProbability: false });
+
+  const raw = document.getElementById("inferBands").value;
+  const tokens = raw.split(/[\s,，;；、]+/).filter((t) => t !== "");
+  if (tokens.length < 1 || tokens.length > 40) {
+    throw new Error(`观测条带数量须为 1～40 条（当前 ${tokens.length} 条）`);
+  }
+  const bands = [];
+  for (const token of tokens) {
+    if (!/^\d+$/.test(token)) {
+      throw new Error(`观测条带长度须为正整数：“${token}” 不合法`);
+    }
+    const value = Number(token);
+    if (!Number.isSafeInteger(value) || value < 1) {
+      throw new Error(`观测条带长度须为 ≥ 1 的正整数：“${token}” 不合法`);
+    }
+    bands.push(value);
+  }
+
+  const toleranceRaw = document.getElementById("inferTolerance").value.trim();
+  const tolerance = Number(toleranceRaw);
+  if (toleranceRaw === "" || !Number.isInteger(tolerance) || tolerance < 0 || tolerance > 10) {
+    throw new Error("容差须为 0～10 的整数（bp）");
+  }
+
+  const missingRaw = document.getElementById("inferMissing").value.trim();
+  const maxMissing = Number(missingRaw);
+  if (missingRaw === "" || !Number.isInteger(maxMissing) || maxMissing < 0 || maxMissing > 2) {
+    throw new Error("允许漏检数须为 0～2 的整数（条）");
+  }
+
+  return {
+    sequence: base.sequence,
+    topology: base.topology,
+    enzymes: base.enzymes,
+    observed_bands: bands,
+    tolerance,
+    max_missing: maxMissing,
+  };
+}
+
+function renderInference(data) {
+  const body = document.getElementById("inferenceBody");
+  const topoText = data.topology === "circular" ? "环状" : "线性";
+  const observedSorted = [...data.observed_bands].sort((a, b) => a - b);
+
+  const headChips = [
+    `<span class="chip">拓扑：${topoText}</span>`,
+    `<span class="chip">序列长度：${data.length} bp</span>`,
+    `<span class="chip">观测条带：${data.observed_bands.length} 条</span>`,
+    `<span class="chip">检查组合数：${data.combination_count_checked}</span>`,
+    `<span class="chip">相容组合数：<strong>${data.compatible_count}</strong></span>`,
+    `<span class="chip">容差：±${data.tolerance} bp</span>`,
+    `<span class="chip">允许漏检：${data.max_missing} 条</span>`,
+  ];
+
+  if (!data.solvable) {
+    body.innerHTML =
+      `<div class="summary">${headChips.join("")}</div>`
+      + `<div class="infer-warn"><strong>无解：</strong>${escapeHtml(data.message.replace(/^无解：/, ""))}</div>`
+      + `<div class="meta">观测条带（输入序）：<code class="seq">[${data.observed_bands.join(", ")}]</code></div>`;
+    document.getElementById("inferenceResults").style.display = "block";
+    return;
+  }
+
+  const statusRows = data.enzyme_status.map((s) => {
+    const label = ENZYME_STATUS_LABELS[s.status] || s.status;
+    return `<tr>
+      <td><strong>${escapeHtml(s.id)}</strong></td>
+      <td><span class="tag status-${s.status}">${label}</span></td>
+      <td>${s.occurrences} / ${data.compatible_count}</td>
+    </tr>`;
+  }).join("");
+
+  const comboRows = data.compatible.map((c, i) => {
+    const ids = c.enzyme_ids.length === 0
+      ? '<span class="hit-detail">（空酶组合：不加任何酶）</span>'
+      : c.enzyme_ids.map((e) => `<span class="tag">${escapeHtml(e)}</span>`).join("");
+    const missNote = c.unpaired_count > 0
+      ? `<div class="note">未配对预测片段：${c.unpaired_count} 条（计为漏检）</div>`
+      : '<div class="legend">全部预测片段均已与观测配对</div>';
+    return `<tr>
+      <td>${i + 1}</td>
+      <td>${c.enzyme_count}</td>
+      <td>${ids}</td>
+      <td><code class="seq">[${c.predicted_lengths.join(", ")}]</code>${missNote}</td>
+    </tr>`;
+  }).join("");
+
+  body.innerHTML =
+    `<div class="summary">${headChips.join("")}</div>`
+    + `<div class="meta" style="margin-bottom:10px;">观测条带（输入序，重复保留）：`
+    + `<code class="seq">[${data.observed_bands.join(", ")}]</code>`
+    + `；排序后：<code class="seq">[${observedSorted.join(", ")}]</code></div>`
+    + `<h2 style="margin-top:8px;">各酶在相容组合中的情况</h2>`
+    + `<table><thead><tr>`
+    + `<th style="width:22%">酶 ID</th><th style="width:22%">结论</th><th>出现次数（占相容组合）</th>`
+    + `</tr></thead><tbody>${statusRows}</tbody></table>`
+    + `<div class="legend">必有＝出现在全部相容组合；可有＝出现在部分相容组合；不可能＝不出现在任何相容组合。</div>`
+    + `<h2 style="margin-top:16px;">相容酶组合（按酶数、ID 排序）及其排序后预测长度</h2>`
+    + `<table><thead><tr>`
+    + `<th style="width:5%">#</th><th style="width:9%">酶数</th><th style="width:30%">酶组合（ID 升序）</th><th>预测片段长度（升序）</th>`
+    + `</tr></thead><tbody>${comboRows}</tbody></table>`;
+
+  document.getElementById("inferenceResults").style.display = "block";
+}
+
+document.getElementById("runInference").addEventListener("click", () => {
+  const btn = document.getElementById("runInference");
+  runCalculation(btn, "观测条带反推", "/api/digest-inference", renderInference,
+    buildInferenceRequest);
+});
+
+// ---------- 目标片段分离设计 ----------
+function buildIsolationRequest() {
+  // 复用 DNA/拓扑/酶规则校验；分离设计做完全酶切，不校验、不上传概率
+  const base = buildRequest({ checkProbability: false });
+  const n = base.sequence.length;
+
+  const startRaw = document.getElementById("isoStart").value.trim();
+  const start = Number(startRaw);
+  if (startRaw === "" || !Number.isInteger(start)) {
+    throw new Error("目标起点须为整数（0 基）");
+  }
+  const endRaw = document.getElementById("isoEnd").value.trim();
+  const end = Number(endRaw);
+  if (endRaw === "" || !Number.isInteger(end)) {
+    throw new Error("目标终点须为整数（0 基半开）");
+  }
+  const spacingRaw = document.getElementById("isoSpacing").value.trim();
+  const spacing = Number(spacingRaw);
+  if (spacingRaw === "" || !Number.isInteger(spacing) || spacing < 1 || spacing > 5000) {
+    throw new Error("最小条带间距须为 1～5000 的整数（bp）");
+  }
+
+  if (base.topology === "linear") {
+    if (!(start >= 0 && start < end && end <= n)) {
+      throw new Error(`线性目标区间须满足 0 ≤ 起点 < 终点 ≤ 序列长度（当前 [${start}, ${end})，序列 ${n} bp）`);
+    }
+    if (end - start >= n) {
+      throw new Error(`线性目标区间须短于序列全长（当前长度 ${end - start} bp，序列 ${n} bp）`);
+    }
+  } else {
+    if (!(start >= 0 && start < n && end >= 0 && end < n)) {
+      throw new Error(`环状目标坐标须均在 [0, ${n}) 内（当前起点 ${start}、终点 ${end}）`);
+    }
+    if (start === end) {
+      throw new Error("环状目标起点与终点不能相等（起点 > 终点表示跨原点）");
+    }
+  }
+
+  return {
+    sequence: base.sequence,
+    topology: base.topology,
+    enzymes: base.enzymes,
+    target_start: start,
+    target_end: end,
+    min_spacing: spacing,
+  };
+}
+
+function renderIsolation(data) {
+  const body = document.getElementById("isolationBody");
+  const topoText = data.topology === "circular" ? "环状" : "线性";
+  const t = data.target;
+  const rangeText = t.wraps_origin
+    ? `[${t.start}, ${t.end})（跨原点）`
+    : `[${t.start}, ${t.end})`;
+
+  const headChips = [
+    `<span class="chip">拓扑：${topoText}</span>`,
+    `<span class="chip">序列长度：${data.length} bp</span>`,
+    `<span class="chip">目标区间：${rangeText}</span>`,
+    `<span class="chip">目标片段长度：${t.length} bp</span>`,
+    `<span class="chip">最小条带间距：${data.min_spacing} bp</span>`,
+    `<span class="chip">检查组合数：${data.combination_count_checked}</span>`,
+    `<span class="chip">可行组合数：<strong>${data.feasible_count}</strong></span>`,
+  ];
+
+  const targetHtml =
+    `<div class="meta" style="margin:10px 0 6px;">目标片段序列（${t.length} bp，区间 ${rangeText}）：</div>`
+    + `<div class="seq-box"><code class="seq">${escapeHtml(t.sequence)}</code></div>`;
+
+  if (!data.solvable) {
+    body.innerHTML =
+      `<div class="summary">${headChips.join("")}</div>`
+      + `<div class="infer-warn"><strong>无解：</strong>${escapeHtml(data.message.replace(/^无解：/, ""))}</div>`
+      + targetHtml;
+    document.getElementById("isolationResults").style.display = "block";
+    return;
+  }
+
+  const rows = data.feasible.map((c, i) => {
+    const ids = c.enzyme_ids.map((e) => `<span class="tag">${escapeHtml(e)}</span>`).join("");
+    return `<tr>
+      <td>${i + 1}</td>
+      <td>${c.enzyme_count}</td>
+      <td>${ids}</td>
+      <td>${t.length}</td>
+      <td>${c.nearest_competitor_length}</td>
+      <td><strong>${c.actual_spacing}</strong></td>
+      <td><code class="seq">[${c.other_lengths.join(", ")}]</code></td>
+    </tr>`;
+  }).join("");
+
+  body.innerHTML =
+    `<div class="summary">${headChips.join("")}</div>`
+    + targetHtml
+    + `<h2 style="margin-top:16px;">可行酶组合（酶数升序 → 最小实际间距降序 → 酶 ID 字典序）</h2>`
+    + `<table><thead><tr>`
+    + `<th style="width:5%">#</th>`
+    + `<th style="width:7%">酶数</th>`
+    + `<th style="width:24%">酶组合（ID 升序）</th>`
+    + `<th style="width:11%">目标片段长度</th>`
+    + `<th style="width:13%">最近竞争片段长度</th>`
+    + `<th style="width:10%">实际间距 (bp)</th>`
+    + `<th>其他片段长度（升序）</th>`
+    + `</tr></thead><tbody>${rows}</tbody></table>`
+    + `<div class="legend">实际间距＝目标片段长度与最近一条其他片段长度之差的绝对值`
+    + `（可行组合均 ≥ 设定最小条带间距 ${data.min_spacing} bp）；最近竞争片段长度并列时取较短者。</div>`;
+
+  document.getElementById("isolationResults").style.display = "block";
+}
+
+document.getElementById("runIsolation").addEventListener("click", () => {
+  const btn = document.getElementById("runIsolation");
+  runCalculation(btn, "目标片段分离设计", "/api/fragment-isolation", renderIsolation,
+    buildIsolationRequest);
+});
+
+// ---------- 平切片段拼接 ----------
+const asmTargetInput = document.getElementById("asmTarget");
+
+function cleanAsmTarget() {
+  return asmTargetInput.value.replace(/\s+/g, "").toUpperCase();
+}
+
+asmTargetInput.addEventListener("input", () => {
+  document.getElementById("asmTargetLen").textContent = cleanAsmTarget().length;
+});
+
+function buildAssemblyRequest() {
+  // 复用 DNA/拓扑/酶规则校验；拼接做完全酶切，不校验、不上传概率
+  const base = buildRequest({ checkProbability: false });
+
+  const target = cleanAsmTarget();
+  if (target.length < 1 || target.length > 5000) {
+    throw new Error(`目标序列长度须为 1～5000 位（当前 ${target.length} 位）`);
+  }
+  if (!DNA_RE.test(target)) {
+    throw new Error("目标序列只能包含 A、C、G、T 字符");
+  }
+
+  return {
+    sequence: base.sequence,
+    topology: base.topology,
+    enzymes: base.enzymes,
+    target_sequence: target,
+  };
+}
+
+const DIRECTION_LABELS = { "+": "+ 原序列", "-": "− 反向互补" };
+
+function renderAssembly(data) {
+  const body = document.getElementById("assemblyBody");
+  const topoText = data.topology === "circular" ? "环状" : "线性";
+
+  const headChips = [
+    `<span class="chip">拓扑：${topoText}</span>`,
+    `<span class="chip">序列长度：${data.length} bp</span>`,
+    `<span class="chip">切点数：${data.cut_count}</span>`,
+    `<span class="chip">库存片段：${data.stock.length} 条（上限 ${data.max_stock_fragments} 条）</span>`,
+    `<span class="chip">目标长度：${data.target_length} bp</span>`,
+  ];
+  if (data.circular_uncut) {
+    headChips.push('<span class="chip uncut">环状未切开，不可作为原料</span>');
+  }
+
+  const stockRows = data.stock.map((f) => {
+    const range = data.topology === "circular" && f.note && f.note.includes("打开")
+      ? `${f.start} → ${f.end}（环化起点）`
+      : data.topology === "circular" && f.note && f.note.includes("跨原点")
+        ? `${f.start} → ${f.end}（跨原点）`
+        : `[${f.start}, ${f.end})`;
+    const note = f.note ? `<div class="note">${escapeHtml(f.note)}</div>` : "";
+    return `<tr>
+      <td>${f.index}</td>
+      <td>${range}</td>
+      <td>${f.length}</td>
+      <td><code class="seq">${escapeHtml(f.sequence)}</code>${note}</td>
+      <td><code class="seq">${escapeHtml(f.reverse_complement)}</code></td>
+    </tr>`;
+  }).join("");
+  const stockHtml = data.stock.length === 0
+    ? '<div class="legend">库存为空：未切开的环状分子不可作为拼接原料。</div>'
+    : `<h2 style="margin-top:16px;">库存片段（沿用完全酶切编号，每个编号最多用一次）</h2>
+      <table><thead><tr>
+        <th style="width:6%">编号</th><th style="width:15%">区间 [起, 止)</th>
+        <th style="width:9%">长度 (bp)</th><th>序列（+ 原序列）</th><th>− 反向互补</th>
+      </tr></thead><tbody>${stockRows}</tbody></table>`;
+
+  if (!data.solvable) {
+    body.innerHTML =
+      `<div class="summary">${headChips.join("")}</div>`
+      + `<div class="infer-warn"><strong>无解：</strong>${escapeHtml(data.message.replace(/^无解：/, ""))}</div>`
+      + `<div class="meta">目标序列（${data.target_length} bp）：</div>`
+      + `<div class="seq-box"><code class="seq">${escapeHtml(data.target)}</code></div>`
+      + stockHtml;
+    document.getElementById("assemblyResults").style.display = "block";
+    return;
+  }
+
+  const pieceRows = data.pieces.map((p, i) => `<tr>
+      <td>${i + 1}</td>
+      <td><strong>${p.index}</strong></td>
+      <td>${DIRECTION_LABELS[p.direction] || p.direction}</td>
+      <td>[${p.start}, ${p.end})</td>
+      <td>${p.length}</td>
+      <td><code class="seq">${escapeHtml(p.sequence)}</code></td>
+    </tr>`).join("");
+
+  const pathText = data.pieces
+    .map((p) => `${p.index}${p.direction === "+" ? "⁺" : "⁻"}`)
+    .join(" → ");
+
+  body.innerHTML =
+    `<div class="summary">${headChips.join("")}`
+    + `<span class="chip">使用片段数：<strong>${data.piece_count}</strong>（最少）</span>`
+    + `<span class="chip">拼接与目标逐位相等：${data.matches_target ? "是" : "否"}</span>`
+    + `</div>`
+    + `<div class="meta" style="margin-bottom:6px;">拼接路径（编号⁺/⁻ 依次首尾直连）：`
+    + `<code class="seq">${escapeHtml(pathText)}</code></div>`
+    + `<div class="meta">有序编号：<code class="seq">[${data.ordered_indices.join(", ")}]</code>`
+    + `；方向：<code class="seq">[${data.directions.map((d) => `"${d}"`).join(", ")}]</code></div>`
+    + `<h2 style="margin-top:16px;">拼接明细（目标中的区间为 0 基半开）</h2>`
+    + `<table><thead><tr>`
+    + `<th style="width:6%">顺序</th><th style="width:8%">片段编号</th>`
+    + `<th style="width:13%">方向</th><th style="width:14%">目标区间 [起, 止)</th>`
+    + `<th style="width:9%">长度 (bp)</th><th>拼接序列</th>`
+    + `</tr></thead><tbody>${pieceRows}</tbody></table>`
+    + `<h2 style="margin-top:16px;">拼接结果（${data.target_length} bp，与目标逐位相等）</h2>`
+    + `<div class="seq-box"><code class="seq">${escapeHtml(data.assembled_sequence)}</code></div>`
+    + stockHtml;
+
+  document.getElementById("assemblyResults").style.display = "block";
+}
+
+document.getElementById("runAssembly").addEventListener("click", () => {
+  const btn = document.getElementById("runAssembly");
+  runCalculation(btn, "平切片段拼接", "/api/fragment-assembly", renderAssembly,
+    buildAssemblyRequest);
+});
+
+// ---------- 环状双酶图谱重建 ----------
+function parseLengthGroup(inputId, name, minCount, maxCount) {
+  const raw = document.getElementById(inputId).value;
+  const tokens = raw.split(/[\s,，;；、]+/).filter((t) => t !== "");
+  if (tokens.length < minCount || tokens.length > maxCount) {
+    throw new Error(`${name}数量须为 ${minCount}～${maxCount} 条（当前 ${tokens.length} 条）`);
+  }
+  const values = [];
+  for (const token of tokens) {
+    if (!/^\d+$/.test(token)) {
+      throw new Error(`${name}长度须为正整数：“${token}” 不合法`);
+    }
+    const value = Number(token);
+    if (!Number.isSafeInteger(value) || value < 1) {
+      throw new Error(`${name}长度须为 ≥ 1 的正整数：“${token}” 不合法`);
+    }
+    values.push(value);
+  }
+  return values;
+}
+
+function buildCircularMapRequest() {
+  const a = parseLengthGroup("cmA", "A 单酶切片段", 1, 3);
+  const b = parseLengthGroup("cmB", "B 单酶切片段", 1, 3);
+  const dbl = parseLengthGroup("cmDouble", "双酶切片段", 2, 6);
+
+  if (dbl.length !== a.length + b.length) {
+    throw new Error(
+      `双酶切片段数须等于两组单酶切片段数之和（当前双酶切 ${dbl.length} 片，` +
+      `A 单酶切 ${a.length} 片 + B 单酶切 ${b.length} 片）`);
+  }
+  const sum = (xs) => xs.reduce((acc, x) => acc + x, 0);
+  const totalA = sum(a), totalB = sum(b), totalD = sum(dbl);
+  if (!(totalA === totalB && totalB === totalD)) {
+    throw new Error(
+      `三组片段总长相等才可能是同一环状分子（当前 A 单酶切 ${totalA} bp、` +
+      `B 单酶切 ${totalB} bp、双酶切 ${totalD} bp）`);
+  }
+  if (totalD < 4 || totalD > 5000) {
+    throw new Error(`环状分子总长须为 4～5000 bp（当前 ${totalD} bp）`);
+  }
+  return { a_lengths: a, b_lengths: b, double_lengths: dbl };
+}
+
+function renderCircularMap(data) {
+  const body = document.getElementById("circularMapBody");
+  const headChips = [
+    `<span class="chip">环状分子总长：${data.total_length} bp</span>`,
+    `<span class="chip">A 切点：${data.a_cut_count} 个</span>`,
+    `<span class="chip">B 切点：${data.b_cut_count} 个</span>`,
+    `<span class="chip">总切点：${data.cut_count} 个</span>`,
+    `<span class="chip">枚举候选：${data.arrangements_checked} 种</span>`,
+    `<span class="chip">不同图谱数：<strong>${data.map_count}</strong></span>`,
+  ];
+  const inputMeta =
+    `<div class="meta" style="margin-bottom:10px;">输入（重复长度按出现次数计）：`
+    + `A 单酶切 <code class="seq">[${data.a_lengths.join(", ")}]</code>；`
+    + `B 单酶切 <code class="seq">[${data.b_lengths.join(", ")}]</code>；`
+    + `A+B 双酶切 <code class="seq">[${data.double_lengths.join(", ")}]</code></div>`;
+
+  if (!data.solvable) {
+    body.innerHTML =
+      `<div class="summary">${headChips.join("")}</div>`
+      + inputMeta
+      + `<div class="infer-warn"><strong>无解：</strong>${escapeHtml(data.message.replace(/^无解：/, ""))}</div>`;
+    document.getElementById("circularMapResults").style.display = "block";
+    return;
+  }
+
+  const mapHtml = data.maps.map((map, i) => {
+    const cutRows = map.cut_points.map((cp) => {
+      const tagClass = cp.label === "A" ? "tag status-required" : "tag status-optional";
+      return `<tr>
+        <td>${cp.position}</td>
+        <td><span class="${tagClass}">${cp.label}</span></td>
+        <td>${cp.next_distance}</td>
+      </tr>`;
+    }).join("");
+    const fragRows = map.fragments.map((f) => {
+      const range = f.wraps_origin
+        ? `[${f.start}, ${f.end})（绕回原点 0）`
+        : `[${f.start}, ${f.end})`;
+      return `<tr><td>${f.index}</td><td>${range}</td><td>${f.length}</td></tr>`;
+    }).join("");
+    const orderText = map.cyclic_order
+      .map((item) => `${item.label}→${item.next_distance}`)
+      .join("，");
+    return `<h2 style="margin-top:18px;">图谱 ${i + 1}</h2>
+      <div class="meta" style="margin-bottom:6px;">环上次序（切点标签→其后间距，字典序最小表示）：`
+      + `<code class="seq">${escapeHtml(orderText)}</code></div>`
+      + `<div class="meta" style="margin-bottom:6px;">复现单酶切长度：`
+      + `A <code class="seq">[${map.a_fragment_lengths.join(", ")}]</code>；`
+      + `B <code class="seq">[${map.b_fragment_lengths.join(", ")}]</code></div>`
+      + `<table><thead><tr>`
+      + `<th style="width:22%">切点坐标（0 基）</th><th style="width:22%">切点标签</th>`
+      + `<th>到下一个切点的间距 (bp)</th>`
+      + `</tr></thead><tbody>${cutRows}</tbody></table>`
+      + `<table style="margin-top:8px;"><thead><tr>`
+      + `<th style="width:8%">片段 #</th><th style="width:34%">区间 [起, 止)</th>`
+      + `<th>长度 (bp)</th>`
+      + `</tr></thead><tbody>${fragRows}</tbody></table>`;
+  }).join("");
+
+  body.innerHTML =
+    `<div class="summary">${headChips.join("")}</div>`
+    + inputMeta
+    + `<div class="legend">旋转与镜像视为同一图谱；每类取（切点标签, 其后间距）序列字典序最小的表示，`
+    + `并据此从 0 起算各切点的相对坐标（坐标按环状分子相对位置给出，末片段绕回原点）。`
+    + `图谱按该规范表示的字典序排列。</div>`
+    + mapHtml;
+
+  document.getElementById("circularMapResults").style.display = "block";
+}
+
+document.getElementById("runCircularMap").addEventListener("click", () => {
+  const btn = document.getElementById("runCircularMap");
+  runCalculation(btn, "重建环状图谱", "/api/circular-map-reconstruction",
+    renderCircularMap, buildCircularMapRequest);
+});
+
+// ---------- 未知酶规则反推 ----------
+const ruleSamplesContainer = document.getElementById("ruleSamples");
+let ruleSampleSeq = 0;
+
+function renumberRuleSamples() {
+  for (let i = 0; i < ruleSamplesContainer.children.length; i++) {
+    ruleSamplesContainer.children[i].querySelector(".rule-sample-title")
+      .textContent = `样本 ${i + 1}`;
+  }
+}
+
+function addRuleSample(seq = "", topology = "linear", cuts = "") {
+  if (ruleSamplesContainer.children.length >= 3) {
+    alert("最多录入 3 份样本");
+    return;
+  }
+  ruleSampleSeq += 1;
+  const div = document.createElement("div");
+  div.className = "rule-sample";
+  div.innerHTML =
+    '<div class="rule-sample-head"><strong class="rule-sample-title"></strong>' +
+    '<button class="btn del" type="button">删除</button></div>' +
+    '<label class="field">DNA 序列（6～300 bp A/C/G/T，空白自动忽略）</label>' +
+    '<textarea class="rs-seq" rows="2" spellcheck="false" placeholder="粘贴 DNA 序列"></textarea>' +
+    '<div class="meta">当前长度：<strong class="rs-len">0</strong> bp</div>' +
+    '<div class="radio-row">' +
+    `<label><input type="radio" name="rsTopo${ruleSampleSeq}" value="linear"> 线性（linear）</label>` +
+    `<label><input type="radio" name="rsTopo${ruleSampleSeq}" value="circular"> 环状（circular）</label>` +
+    "</div>" +
+    '<label class="field">实测切点（0 基边界，逗号/空白分隔；线性 0～序列长度，环状 0～长度−1；可空）</label>' +
+    '<input class="rs-cuts infer-bands" type="text" spellcheck="false" placeholder="如 6, 15, 24">';
+  const seqInput = div.querySelector(".rs-seq");
+  const lenSpan = div.querySelector(".rs-len");
+  seqInput.value = seq;
+  lenSpan.textContent = seq.replace(/\s+/g, "").length;
+  seqInput.addEventListener("input", () => {
+    lenSpan.textContent = seqInput.value.replace(/\s+/g, "").length;
+  });
+  div.querySelector(`input[value="${topology}"]`).checked = true;
+  div.querySelector(".rs-cuts").value = cuts;
+  div.querySelector(".del").addEventListener("click", () => {
+    if (ruleSamplesContainer.children.length <= 1) {
+      alert("至少保留 1 份样本");
+      return;
+    }
+    div.remove();
+    renumberRuleSamples();
+  });
+  ruleSamplesContainer.appendChild(div);
+  renumberRuleSamples();
+}
+
+document.getElementById("addRuleSample").addEventListener("click", () => addRuleSample());
+
+function buildRuleInferenceRequest() {
+  const count = ruleSamplesContainer.children.length;
+  if (count < 1 || count > 3) {
+    throw new Error(`样本数量须为 1～3 份（当前 ${count} 份）`);
+  }
+  const samples = [];
+  let totalCuts = 0;
+  for (let i = 0; i < count; i++) {
+    const div = ruleSamplesContainer.children[i];
+    const label = `样本 ${i + 1}`;
+    const sequence = div.querySelector(".rs-seq").value.replace(/\s+/g, "").toUpperCase();
+    if (sequence.length < 6 || sequence.length > 300) {
+      throw new Error(`${label} 的 DNA 长度须为 6～300 bp（当前 ${sequence.length} bp）`);
+    }
+    if (!DNA_RE.test(sequence)) {
+      throw new Error(`${label} 的 DNA 序列只能包含 A、C、G、T 字符`);
+    }
+    const topology = div.querySelector('input[type="radio"]:checked').value;
+
+    const raw = div.querySelector(".rs-cuts").value;
+    const tokens = raw.split(/[\s,，;；、]+/).filter((t) => t !== "");
+    const cuts = [];
+    const seen = new Set();
+    const upper = topology === "linear" ? sequence.length : sequence.length - 1;
+    for (const token of tokens) {
+      if (!/^\d+$/.test(token)) {
+        throw new Error(`${label} 的实测切点须为非负整数：“${token}” 不合法`);
+      }
+      const value = Number(token);
+      if (!Number.isSafeInteger(value)) {
+        throw new Error(`${label} 的实测切点过大：“${token}” 不合法`);
+      }
+      if (seen.has(value)) {
+        throw new Error(`${label} 的实测切点重复：${value}`);
+      }
+      seen.add(value);
+      if (value > upper) {
+        const scope = topology === "linear"
+          ? `0～${sequence.length}（含序列两端）`
+          : `0～${sequence.length - 1}`;
+        throw new Error(`${label} 的实测切点 ${value} 超出范围：${topology === "linear" ? "线性" : "环状"}坐标须为 ${scope}`);
+      }
+      cuts.push(value);
+    }
+    totalCuts += cuts.length;
+    samples.push({ sequence, topology, cut_sites: cuts });
+  }
+  if (totalCuts === 0) {
+    throw new Error("全部样本的实测切点合计至少需要一个（当前均为空）");
+  }
+  return { samples };
+}
+
+function renderRuleInference(data) {
+  const body = document.getElementById("ruleInferenceBody");
+  const topoText = (t) => (t === "circular" ? "环状" : "线性");
+
+  const headChips = [
+    `<span class="chip">样本数：${data.sample_count}</span>`,
+    `<span class="chip">识别串长：${data.min_site_length}～${data.max_site_length} 位</span>`,
+    `<span class="chip">检查候选规则：${data.candidate_count_checked} 种</span>`,
+    `<span class="chip">符合规则数：<strong>${data.rule_count}</strong></span>`,
+  ];
+
+  const sampleRows = data.samples.map((s) => `<tr>
+      <td>${s.index}</td>
+      <td>${topoText(s.topology)}</td>
+      <td>${s.length}</td>
+      <td><code class="seq">[${s.observed_cut_sites.join(", ")}]</code></td>
+    </tr>`).join("");
+  const samplesHtml =
+    `<h2 style="margin-top:8px;">样本与实测切点（0 基边界）</h2>`
+    + `<table><thead><tr>`
+    + `<th style="width:8%">样本</th><th style="width:12%">拓扑</th>`
+    + `<th style="width:14%">长度 (bp)</th><th>实测切点（升序）</th>`
+    + `</tr></thead><tbody>${sampleRows}</tbody></table>`
+    + `<div class="legend">候选规则由样本 ${data.generator_sample_index}（实测切点最少的非空样本）枚举，再逐条在全部样本上验证。</div>`;
+
+  if (!data.solvable) {
+    body.innerHTML =
+      `<div class="summary">${headChips.join("")}</div>`
+      + `<div class="infer-warn"><strong>无解：</strong>${escapeHtml(data.message.replace(/^无解：/, ""))}</div>`
+      + samplesHtml;
+    document.getElementById("ruleInferenceResults").style.display = "block";
+    return;
+  }
+
+  const ruleRows = data.rules.map((rule, i) => {
+    const equivalent = rule.self_equivalent
+      ? '<span class="hit-detail">自身等价（回文且偏移居中）</span>'
+      : `<code class="seq">${escapeHtml(rule.reverse_complement)}</code>，偏移 ${rule.equivalent_offset}`;
+    const predicted = rule.predicted_cut_sites
+      .map((cuts, j) => `<div class="hit-detail">样本 ${j + 1}：<code class="seq">[${cuts.join(", ")}]</code></div>`)
+      .join("");
+    return `<tr>
+      <td>${i + 1}</td>
+      <td><code class="seq">${escapeHtml(rule.site)}</code></td>
+      <td>${rule.site_length}</td>
+      <td>${rule.offset}</td>
+      <td>${equivalent}</td>
+      <td>${predicted}</td>
+    </tr>`;
+  }).join("");
+
+  body.innerHTML =
+    `<div class="summary">${headChips.join("")}</div>`
+    + samplesHtml
+    + `<h2 style="margin-top:16px;">符合的酶规则（按 串长 → 识别串 → 偏移 排序）</h2>`
+    + `<table><thead><tr>`
+    + `<th style="width:5%">#</th><th style="width:14%">识别串</th>`
+    + `<th style="width:7%">串长</th><th style="width:7%">偏移</th>`
+    + `<th style="width:24%">等价表示（同一规则）</th><th>各样本预测切点（0 基边界）</th>`
+    + `</tr></thead><tbody>${ruleRows}</tbody></table>`
+    + `<div class="legend">（识别串, 偏移）与（反向互补串, 串长−偏移）视为同一规则，表中为字典序较小的表示；`
+    + `各样本预测切点集合与实测严格相等（完全酶切：双向查找、允许重叠、环状跨界匹配、同一边界合并）。</div>`;
+
+  document.getElementById("ruleInferenceResults").style.display = "block";
+}
+
+document.getElementById("runRuleInference").addEventListener("click", () => {
+  const btn = document.getElementById("runRuleInference");
+  runCalculation(btn, "反推酶规则", "/api/enzyme-rule-inference",
+    renderRuleInference, buildRuleInferenceRequest);
+});
+
+// ---------- 样本鉴别酶组合 ----------
+const discSamplesContainer = document.getElementById("discSamples");
+let discSampleSeq = 0;
+
+function renumberDiscSamples() {
+  for (let i = 0; i < discSamplesContainer.children.length; i++) {
+    discSamplesContainer.children[i].querySelector(".disc-sample-title")
+      .textContent = `样本 ${i + 1}`;
+  }
+}
+
+function addDiscSample(seq = "", topology = "linear") {
+  if (discSamplesContainer.children.length >= 5) {
+    alert("最多录入 5 份样本");
+    return;
+  }
+  discSampleSeq += 1;
+  const div = document.createElement("div");
+  div.className = "rule-sample";
+  div.innerHTML =
+    '<div class="rule-sample-head"><strong class="disc-sample-title"></strong>' +
+    '<button class="btn del" type="button">删除</button></div>' +
+    '<label class="field">DNA 序列（4～5000 bp A/C/G/T，空白自动忽略）</label>' +
+    '<textarea class="ds-seq" rows="2" spellcheck="false" placeholder="粘贴 DNA 序列"></textarea>' +
+    '<div class="meta">当前长度：<strong class="ds-len">0</strong> bp</div>' +
+    '<div class="radio-row">' +
+    `<label><input type="radio" name="dsTopo${discSampleSeq}" value="linear"> 线性（linear）</label>` +
+    `<label><input type="radio" name="dsTopo${discSampleSeq}" value="circular"> 环状（circular）</label>` +
+    "</div>";
+  const seqInput = div.querySelector(".ds-seq");
+  const lenSpan = div.querySelector(".ds-len");
+  seqInput.value = seq;
+  lenSpan.textContent = seq.replace(/\s+/g, "").length;
+  seqInput.addEventListener("input", () => {
+    lenSpan.textContent = seqInput.value.replace(/\s+/g, "").length;
+  });
+  div.querySelector(`input[value="${topology}"]`).checked = true;
+  div.querySelector(".del").addEventListener("click", () => {
+    if (discSamplesContainer.children.length <= 2) {
+      alert("至少保留 2 份样本");
+      return;
+    }
+    div.remove();
+    renumberDiscSamples();
+  });
+  discSamplesContainer.appendChild(div);
+  renumberDiscSamples();
+}
+
+document.getElementById("addDiscSample").addEventListener("click", () => addDiscSample());
+
+function buildDiscriminationRequest() {
+  const count = discSamplesContainer.children.length;
+  if (count < 2 || count > 5) {
+    throw new Error(`样本数量须为 2～5 份（当前 ${count} 份）`);
+  }
+  const samples = [];
+  for (let i = 0; i < count; i++) {
+    const div = discSamplesContainer.children[i];
+    const label = `样本 ${i + 1}`;
+    const sequence = div.querySelector(".ds-seq").value.replace(/\s+/g, "").toUpperCase();
+    if (sequence.length < 4 || sequence.length > 5000) {
+      throw new Error(`${label} 的 DNA 长度须为 4～5000 bp（当前 ${sequence.length} bp）`);
+    }
+    if (!DNA_RE.test(sequence)) {
+      throw new Error(`${label} 的 DNA 序列只能包含 A、C、G、T 字符`);
+    }
+    const topology = div.querySelector('input[type="radio"]:checked').value;
+    samples.push({ sequence, topology });
+  }
+  const minSampleLen = Math.min(...samples.map((s) => s.sequence.length));
+
+  // 共用上方酶规则；鉴别做完全酶切，不校验、不上传概率
+  if (enzymeRows.rows.length < 1 || enzymeRows.rows.length > 8) {
+    throw new Error(`酶规则数量须为 1～8 条（当前 ${enzymeRows.rows.length} 条）`);
+  }
+  const seen = new Set();
+  const enzymes = [];
+  for (const row of enzymeRows.rows) {
+    const id = row.querySelector(".e-id").value.trim();
+    const site = row.querySelector(".e-site").value.replace(/\s+/g, "").toUpperCase();
+    const offsetRaw = row.querySelector(".e-offset").value.trim();
+    const offset = Number(offsetRaw);
+    if (!id) throw new Error("每条酶规则都必须填写 ID");
+    if (seen.has(id)) throw new Error(`酶 ID 重复：${id}`);
+    seen.add(id);
+    if (site.length < 3 || site.length > 12) {
+      throw new Error(`酶 ${id} 的识别串长度须为 3～12 位（当前 ${site.length} 位）`);
+    }
+    if (!IUPAC_RE.test(site)) {
+      throw new Error(`酶 ${id} 的识别串含非法 IUPAC 字符`);
+    }
+    if (site.length > minSampleLen) {
+      throw new Error(`酶 ${id} 的识别串（${site.length} 位）长于最短样本（${minSampleLen} bp）：识别串不得长于任一样本`);
+    }
+    if (offsetRaw === "" || !Number.isInteger(offset) || offset < 0 || offset > site.length) {
+      throw new Error(`酶 ${id} 的切割偏移须为 0～${site.length} 的整数`);
+    }
+    enzymes.push({ id, site, offset });
+  }
+
+  const toleranceRaw = document.getElementById("discTolerance").value.trim();
+  const tolerance = Number(toleranceRaw);
+  if (toleranceRaw === "" || !Number.isInteger(tolerance) || tolerance < 0 || tolerance > 10) {
+    throw new Error("条带容差须为 0～10 的整数（bp）");
+  }
+
+  return { samples, enzymes, tolerance };
+}
+
+function renderDiscrimination(data) {
+  const body = document.getElementById("discriminationBody");
+  const topoText = (t) => (t === "circular" ? "环状" : "线性");
+
+  const headChips = [
+    `<span class="chip">样本数：${data.sample_count}</span>`,
+    `<span class="chip">酶规则：${data.enzyme_count} 条</span>`,
+    `<span class="chip">条带容差：±${data.tolerance} bp</span>`,
+    `<span class="chip">检查组合数：${data.combination_count_checked}</span>`,
+  ];
+  if (data.solvable) {
+    headChips.push(`<span class="chip">最少用酶数：<strong>${data.min_enzyme_count}</strong></span>`);
+    headChips.push(`<span class="chip">可行组合数：<strong>${data.combination_count}</strong></span>`);
+  }
+
+  const sampleRows = data.samples.map((s) => `<tr>
+      <td>${s.index}</td>
+      <td>${topoText(s.topology)}</td>
+      <td>${s.length}</td>
+    </tr>`).join("");
+  const samplesHtml =
+    `<h2 style="margin-top:8px;">样本</h2>`
+    + `<table><thead><tr>`
+    + `<th style="width:12%">样本</th><th style="width:20%">拓扑</th><th>长度 (bp)</th>`
+    + `</tr></thead><tbody>${sampleRows}</tbody></table>`;
+
+  if (!data.solvable) {
+    body.innerHTML =
+      `<div class="summary">${headChips.join("")}</div>`
+      + `<div class="infer-warn"><strong>无解：</strong>${escapeHtml(data.message.replace(/^无解：/, ""))}</div>`
+      + samplesHtml;
+    document.getElementById("discriminationResults").style.display = "block";
+    return;
+  }
+
+  const comboHtml = data.combinations.map((c, i) => {
+    const ids = c.enzyme_ids.map((e) => `<span class="tag">${escapeHtml(e)}</span>`).join("");
+    const lengthRows = c.sample_lengths.map((lengths, j) => `<tr>
+        <td>样本 ${j + 1}</td>
+        <td>${lengths.length}</td>
+        <td><code class="seq">[${lengths.join(", ")}]</code></td>
+      </tr>`).join("");
+    return `<h2 style="margin-top:18px;">组合 ${i + 1}（${c.enzyme_count} 条酶）：${ids}</h2>`
+      + `<table><thead><tr>`
+      + `<th style="width:14%">样本</th><th style="width:14%">片段数</th>`
+      + `<th>片段长度多重集（升序，重复保留）</th>`
+      + `</tr></thead><tbody>${lengthRows}</tbody></table>`;
+  }).join("");
+
+  body.innerHTML =
+    `<div class="summary">${headChips.join("")}</div>`
+    + samplesHtml
+    + `<h2 style="margin-top:16px;">最少用酶组合（按酶 ID 字典序排列）与各样本长度多重集</h2>`
+    + comboHtml
+    + `<div class="legend">每个组合下全部样本两两可区分：片段数不同，或对应长度差至少有一处超过容差 ±${data.tolerance} bp。</div>`;
+
+  document.getElementById("discriminationResults").style.display = "block";
+}
+
+document.getElementById("runDiscrimination").addEventListener("click", () => {
+  const btn = document.getElementById("runDiscrimination");
+  runCalculation(btn, "鉴别样本", "/api/sample-discrimination", renderDiscrimination,
+    buildDiscriminationRequest);
+});
+
+// 预置一条示例酶并填入示例序列，方便直接试用
+addEnzymeRow("EcoRV-like", "GATATC", "3", "0.8");
+sequenceInput.value = "AAAGATATCGGGGATATCTTTGATATCAAA";
+seqLenSpan.textContent = cleanSequence().length;
+asmTargetInput.value = "ATCAAAGATAAAGAT";
+document.getElementById("asmTargetLen").textContent = cleanAsmTarget().length;
+// 环状双酶图谱重建示例：A 一切点、B 两切点，双酶切 3 片（唯一解）
+document.getElementById("cmA").value = "10";
+document.getElementById("cmB").value = "4, 6";
+document.getElementById("cmDouble").value = "2, 4, 4";
+// 未知酶规则反推示例：GATATC 类规则在线性样本上切于 6、15、24
+addRuleSample("AAAGATATCGGGGATATCTTTGATATCAAA", "linear", "6, 15, 24");
+// 样本鉴别示例：线性 30 bp（切于 6、15、24 → 4 片）与环状 10 bp（单切点 → 全长 1 片）
+addDiscSample("AAAGATATCGGGGATATCTTTGATATCAAA", "linear");
+addDiscSample("TTGATATCAA", "circular");
+</script>
+</body>
+</html>
