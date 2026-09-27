@@ -14,8 +14,8 @@ docker compose up --build
 **http://localhost:8000**
 
 单页内包含全部功能区块：完全酶切、部分酶切丰度分析、同义移除位点、观测条带反推、
-目标片段分离设计、平切片段拼接、环状双酶图谱重建、未知酶规则反推与样本鉴别酶组合；
-各 HTTP API 见下文。
+目标片段分离设计、平切片段拼接、环状双酶图谱重建、未知酶规则反推、样本鉴别酶组合
+与酶活性校准；各 HTTP API 见下文。
 
 停止：`Ctrl+C`（后台运行则用 `docker compose down`）。
 
@@ -153,6 +153,24 @@ docker compose up --build
     升序枚举，首个出现可行组合的大小即最少用酶数），组合按**酶 ID 字典序**
     排列，并列出每个组合下**各样本的长度多重集**；
   - 无解时 HTTP 200 返回 `solvable: false` 与明确说明。
+- **酶活性校准**（页面区块“酶活性校准”/ `POST /api/enzyme-activity-calibration`）：
+  - 复用当前 DNA（**6～300 bp**）、拓扑与 **1～3 条**酶规则（`id` / `site` /
+    `offset` 与酶切接口相同，**忽略**其单点切开概率字段——概率由本功能枚举）；
+    预测的**不同切点边界**（各酶边界之并，含线性端点命中）**超过 30 个时拒绝**
+    （HTTP 400）；
+  - 录入 **1～40 条互异**的（片段长度, 类型, 每份原始分子的观测丰度）与
+    **0～0.1 绝对容差**：长度为正整数，丰度为**非负有限数**；类型为
+    `fragment`（普通片段）/ `circular_uncut`（未切开全环）/ `linear_full`
+    （单切点全长线性片段），**线性仅有普通片段**，环状须区分两种全长结果；
+  - 各酶单点切开概率从 **0、0.1、…、1** 共 11 个取值枚举（k 条酶共 11^k 种，
+    至多 1331 种），按现有部分酶切模型计算预测丰度：**同一边界同酶命中去重**、
+    **不同酶独立切开**（边界概率 = 1 − 各酶未切概率之积）；**仅核对录入的行**，
+    未预测到的（长度, 类型）按 **0** 计；
+  - 返回**各行误差 |预测 − 观测| 均不超过容差**的全部概率组合：**各酶按 ID
+    定序**，**组合按概率元组升序排列**，并给出**各酶可行概率范围**（可行取值
+    及其 min / max）；每条酶的切点只扫描一次、按 O(m²) 区间概率求和，
+    **不枚举 2^m 种切开状态**；无解时 HTTP 200 返回 `solvable: false` 与明确说明
+    （含所有组合的最大行误差最小值）。
 
 ## 坐标约定（示例）
 
@@ -608,6 +626,83 @@ curl -s -X POST http://localhost:8000/api/sample-discrimination \
 # {"detail":"酶 E1 的识别串（6 位）不能长于任一样本（当前最短样本 4 bp）"}
 ```
 
+`POST /api/enzyme-activity-calibration`
+
+酶活性校准：复用 `sequence`（**6～300 bp**）/ `topology` / `enzymes[]`（**1～3 条**，
+`id` / `site` / `offset` 与酶切接口相同；`cut_probability` 与本功能无关，可省略——
+各酶概率由接口枚举），另传 `rows`（**1～40 条互异**的观测行：`length` 正整数、
+`kind` 为 `fragment` / `circular_uncut` / `linear_full`（**线性仅 `fragment`**）、
+`observed` **非负有限数**）与 `tolerance`（**0～0.1** 绝对容差，省略为 0）。
+
+```json
+{
+  "sequence": "AAAGATATCGGGGATATCTTTGATATCAAA",
+  "topology": "linear",
+  "enzymes": [
+    {"id": "EcoRV-like", "site": "GATATC", "offset": 3}
+  ],
+  "rows": [
+    {"length": 6, "kind": "fragment", "observed": 1.6},
+    {"length": 9, "kind": "fragment", "observed": 1.28},
+    {"length": 15, "kind": "fragment", "observed": 0.32}
+  ],
+  "tolerance": 0.05
+}
+```
+
+返回字段：`length`、`topology`、`enzyme_ids`（按 ID 定序）、`boundary_count` /
+`boundaries`（预测的不同切点边界，各酶边界之并；**超过 30 个时 HTTP 400 拒绝**）、
+`rows` / `row_count`（规范化后的观测行）、`tolerance`、`probability_grid`
+（0、0.1、…、1 共 11 个取值）、`combination_count_checked`（= 11^酶数）、
+`combination_count`、`combinations[]`（`probabilities`（与 `enzyme_ids` 一一对应）、
+`max_error`（该组合的最大行误差））、`enzyme_ranges[]`（每条酶的 `values`
+（可行取值，升序）与 `min` / `max`）、`solvable`。组合按**概率元组升序**排列；
+仅核对录入的行，未预测到的（长度, 类型）按 0 计。
+
+```bash
+curl -s -X POST http://localhost:8000/api/enzyme-activity-calibration \
+  -H 'Content-Type: application/json' \
+  -d '{"sequence":"AAAGATATCGGGGATATCTTTGATATCAAA","topology":"linear","enzymes":[{"id":"EcoRV-like","site":"GATATC","offset":3}],"rows":[{"length":6,"kind":"fragment","observed":1.6},{"length":9,"kind":"fragment","observed":1.28},{"length":15,"kind":"fragment","observed":0.32}],"tolerance":0.05}'
+# ... "boundary_count":3,"boundaries":[6,15,24],"combination_count_checked":11,
+#     "combination_count":1,"combinations":[{"probabilities":[0.8],"max_error":0.0}],
+#     "enzyme_ranges":[{"id":"EcoRV-like","values":[0.8],"min":0.8,"max":0.8}],
+#     "solvable":true
+```
+
+上例中 EcoRV-like 在边界 6、15、24 切开，p=0.8 时 6 bp 片段期望 1.6、9 bp 期望
+1.28、15 bp 期望 0.32，与三行观测完全一致，故唯一可行概率为 0.8。环状示例
+（10 bp 单切点环：未切开全环与单切点全长线性片段分别统计，p=0.7 唯一可行）：
+
+```bash
+curl -s -X POST http://localhost:8000/api/enzyme-activity-calibration \
+  -H 'Content-Type: application/json' \
+  -d '{"sequence":"TTGATATCAA","topology":"circular","enzymes":[{"id":"E1","site":"GATATC","offset":3}],"rows":[{"length":10,"kind":"circular_uncut","observed":0.3},{"length":10,"kind":"linear_full","observed":0.7}],"tolerance":0.01}'
+# ... "combinations":[{"probabilities":[0.7],"max_error":0.0}],
+#     "enzyme_ranges":[{"id":"E1","values":[0.7],"min":0.7,"max":0.7}], ...
+```
+
+无解时返回 HTTP 200、`solvable: false` 与 `message` 明确说明（含所有组合的最大
+行误差最小值及取得该值的概率组合）；`enzyme_ranges` 中各酶 `values` 为空、
+`min` / `max` 为 null：
+
+```bash
+curl -s -X POST http://localhost:8000/api/enzyme-activity-calibration \
+  -H 'Content-Type: application/json' \
+  -d '{"sequence":"AAAGATATCGGGGATATCTTTGATATCAAA","topology":"linear","enzymes":[{"id":"E1","site":"GATATC","offset":3}],"rows":[{"length":6,"kind":"fragment","observed":2.5}],"tolerance":0.1}'
+# {"...","solvable":false,"message":"无解：在 11 种概率组合（1 条酶 × 各 11 个取值）
+#  中，没有任何组合能使全部 1 行观测的预测误差均不超过容差 ±0.1；所有组合的最大
+#  行误差最小为 0.5（概率 E1=1.0），仍超过容差。"}
+```
+
+参数不满足范围或不同切点边界超过 30 个时返回 HTTP 400，`detail` 为中文原因：
+
+```bash
+curl -s -X POST http://localhost:8000/api/enzyme-activity-calibration \
+  -H 'Content-Type: application/json' \
+  -d '{"sequence":"AAAGATATCGGGGATATCTTTGATATCAAA","topology":"linear","enzymes":[{"id":"E1","site":"GATATC","offset":3}],"rows":[{"length":6,"kind":"fragment","observed":1.6},{"length":6,"kind":"fragment","observed":1.5}]}'
+# {"detail":"第 2 行与之前的行重复：（长度 6，类型 fragment）；（片段长度, 类型）必须互异"}
+```
+
 ## 不用 Docker 的本地开发
 
 ```bash
@@ -628,8 +723,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 │   ├── circular_map.py    # 纯函数：环状双酶图谱重建（枚举片段环上次序 × 边界归属、二面体规范化、0 基坐标）
 │   ├── rule_inference.py  # 纯函数：未知酶规则反推（候选窗口枚举、多样本严格验证、反向互补等价合并）
 │   ├── discrimination.py  # 纯函数：样本鉴别酶组合（切点复用、枚举非空组合、两两可区分判定、最少用酶）
-│   ├── main.py            # FastAPI：参数校验、/api/digest、/api/partial-digest、/api/synonymous-redesign、/api/digest-inference、/api/fragment-isolation、/api/fragment-assembly、/api/circular-map-reconstruction、/api/enzyme-rule-inference、/api/sample-discrimination、页面路由
-│   └── static/index.html  # 原生 HTML/CSS/JS 单页（含概率输入、丰度表、同义重设计、条带反推、目标片段分离、平切片段拼接、环状双酶图谱重建、未知酶规则反推与样本鉴别酶组合）
+│   ├── calibration.py     # 纯函数：酶活性校准（切点单次扫描、概率网格枚举、O(m²) 区间概率求和、可行概率范围）
+│   ├── main.py            # FastAPI：参数校验、/api/digest、/api/partial-digest、/api/synonymous-redesign、/api/digest-inference、/api/fragment-isolation、/api/fragment-assembly、/api/circular-map-reconstruction、/api/enzyme-rule-inference、/api/sample-discrimination、/api/enzyme-activity-calibration、页面路由
+│   └── static/index.html  # 原生 HTML/CSS/JS 单页（含概率输入、丰度表、同义重设计、条带反推、目标片段分离、平切片段拼接、环状双酶图谱重建、未知酶规则反推、样本鉴别酶组合与酶活性校准）
 ├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml

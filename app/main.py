@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path
 
@@ -14,6 +15,20 @@ from .assembly import (
     MIN_TARGET_LEN,
     AssemblyInputError,
     fragment_assembly,
+)
+from .calibration import (
+    KIND_FRAGMENT as CAL_KIND_FRAGMENT,
+    KINDS as CAL_KINDS,
+    MAX_DNA_LEN as CAL_MAX_DNA_LEN,
+    MAX_ENZYMES as CAL_MAX_ENZYMES,
+    MAX_ROWS as CAL_MAX_ROWS,
+    MAX_TOLERANCE as CAL_MAX_TOLERANCE,
+    MIN_DNA_LEN as CAL_MIN_DNA_LEN,
+    MIN_ENZYMES as CAL_MIN_ENZYMES,
+    MIN_ROWS as CAL_MIN_ROWS,
+    MIN_TOLERANCE as CAL_MIN_TOLERANCE,
+    CalibrationInputError,
+    enzyme_activity_calibration,
 )
 from .circular_map import (
     MAX_DOUBLE_FRAGMENTS,
@@ -53,7 +68,7 @@ from .rule_inference import (
     enzyme_rule_inference,
 )
 
-app = FastAPI(title="DNA 虚拟平切酶酶切图谱", version="1.8.0")
+app = FastAPI(title="DNA 虚拟平切酶酶切图谱", version="1.9.0")
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -162,18 +177,39 @@ class SampleDiscriminationRequest(BaseModel):
     tolerance: int = 0
 
 
+class CalibrationRow(BaseModel):
+    # 一条观测：（片段长度, 类型, 每份原始分子的观测丰度）
+    length: int
+    kind: str
+    observed: float
+
+
+class EnzymeActivityCalibrationRequest(BaseModel):
+    sequence: str
+    topology: str
+    enzymes: list[EnzymeRule]  # 校准枚举各酶概率，请求中的概率字段被忽略
+    rows: list[CalibrationRow]
+    tolerance: float = 0.0
+
+
 def _bad_request(message: str) -> HTTPException:
     return HTTPException(status_code=400, detail=message)
 
 
 def _normalize_inputs(
-    raw_sequence: str, raw_topology: str, raw_enzymes: list[EnzymeRule]
+    raw_sequence: str,
+    raw_topology: str,
+    raw_enzymes: list[EnzymeRule],
+    min_dna_len: int = MIN_DNA_LEN,
+    max_dna_len: int = MAX_DNA_LEN,
+    min_enzymes: int = MIN_ENZYMES,
+    max_enzymes: int = MAX_ENZYMES,
 ) -> tuple[str, str, list[dict]]:
-    """/api/digest 与 /api/partial-digest 共用的参数校验与规范化。"""
+    """/api/digest 等接口共用的参数校验与规范化（DNA 长度与酶条数限额可按接口覆盖）。"""
     # ---- DNA 序列 ----
     sequence = WHITESPACE_RE.sub("", raw_sequence).upper()
-    if not MIN_DNA_LEN <= len(sequence) <= MAX_DNA_LEN:
-        raise _bad_request(f"DNA 序列长度须为 {MIN_DNA_LEN}～{MAX_DNA_LEN} bp（当前 {len(sequence)} bp）")
+    if not min_dna_len <= len(sequence) <= max_dna_len:
+        raise _bad_request(f"DNA 序列长度须为 {min_dna_len}～{max_dna_len} bp（当前 {len(sequence)} bp）")
     if not DNA_RE.fullmatch(sequence):
         raise _bad_request("DNA 序列只能包含 A、C、G、T 字符")
 
@@ -182,8 +218,8 @@ def _normalize_inputs(
         raise _bad_request("拓扑类型须为 linear（线性）或 circular（环状）")
 
     # ---- 酶规则 ----
-    if not MIN_ENZYMES <= len(raw_enzymes) <= MAX_ENZYMES:
-        raise _bad_request(f"酶规则数量须为 {MIN_ENZYMES}～{MAX_ENZYMES} 条（当前 {len(raw_enzymes)} 条）")
+    if not min_enzymes <= len(raw_enzymes) <= max_enzymes:
+        raise _bad_request(f"酶规则数量须为 {min_enzymes}～{max_enzymes} 条（当前 {len(raw_enzymes)} 条）")
 
     normalized_enzymes: list[dict] = []
     seen_ids: set[str] = set()
@@ -684,6 +720,99 @@ def sample_discrimination_api(request: SampleDiscriminationRequest) -> dict:
         request.samples, request.enzymes, request.tolerance
     )
     return sample_discrimination(samples, enzymes, tolerance)
+
+
+def _normalize_calibration_rows(
+    raw_rows: list[CalibrationRow], topology: str
+) -> list[dict]:
+    """/api/enzyme-activity-calibration 的观测行校验与规范化。
+
+    1～40 条互异的（片段长度, 类型）：长度为正整数；类型为 fragment /
+    circular_uncut / linear_full，线性拓扑仅有普通片段（fragment）；
+    观测丰度为非负有限数。
+    """
+    if not CAL_MIN_ROWS <= len(raw_rows) <= CAL_MAX_ROWS:
+        raise _bad_request(
+            f"观测行数量须为 {CAL_MIN_ROWS}～{CAL_MAX_ROWS} 条"
+            f"（当前 {len(raw_rows)} 条）"
+        )
+
+    rows: list[dict] = []
+    seen: set[tuple[int, str]] = set()
+    for index, raw in enumerate(raw_rows, start=1):
+        # bool 是 int 的子类，显式排除以免 True/False 混入
+        length = raw.length
+        if not isinstance(length, int) or isinstance(length, bool):
+            raise _bad_request(f"第 {index} 行的片段长度须为整数")
+        if length < 1:
+            raise _bad_request(f"第 {index} 行的片段长度须为正整数（≥ 1 bp）")
+
+        kind = raw.kind.strip()
+        if kind not in CAL_KINDS:
+            raise _bad_request(
+                f"第 {index} 行的片段类型须为 fragment（普通片段）、"
+                "circular_uncut（未切开全环）或 linear_full（单切点全长线性片段）"
+            )
+        if topology == "linear" and kind != CAL_KIND_FRAGMENT:
+            raise _bad_request(
+                f"第 {index} 行：线性拓扑仅有普通片段（fragment），"
+                "未切开全环与全长线性片段仅存在于环状拓扑"
+            )
+
+        observed = raw.observed
+        if not isinstance(observed, (int, float)) or isinstance(observed, bool):
+            raise _bad_request(f"第 {index} 行的观测丰度须为数值")
+        observed = float(observed)
+        if not math.isfinite(observed) or observed < 0.0:
+            raise _bad_request(f"第 {index} 行的观测丰度须为非负有限数")
+
+        key = (length, kind)
+        if key in seen:
+            raise _bad_request(
+                f"第 {index} 行与之前的行重复：（长度 {length}，类型 {kind}）；"
+                "（片段长度, 类型）必须互异"
+            )
+        seen.add(key)
+        rows.append({"length": length, "kind": kind, "observed": observed})
+    return rows
+
+
+def _normalize_calibration_tolerance(raw_tolerance: float) -> float:
+    """/api/enzyme-activity-calibration 的绝对容差校验（0～0.1 的有限数）。"""
+    if not isinstance(raw_tolerance, (int, float)) or isinstance(raw_tolerance, bool):
+        raise _bad_request("绝对容差须为数值")
+    tolerance = float(raw_tolerance)
+    if not math.isfinite(tolerance) or not (
+        CAL_MIN_TOLERANCE <= tolerance <= CAL_MAX_TOLERANCE
+    ):
+        raise _bad_request(
+            f"绝对容差须为 {CAL_MIN_TOLERANCE:g}～{CAL_MAX_TOLERANCE:g} 的有限数"
+            f"（当前 {raw_tolerance}）"
+        )
+    return tolerance
+
+
+@app.post("/api/enzyme-activity-calibration")
+def enzyme_activity_calibration_api(
+    request: EnzymeActivityCalibrationRequest,
+) -> dict:
+    sequence, topology, enzymes = _normalize_inputs(
+        request.sequence,
+        request.topology,
+        request.enzymes,
+        CAL_MIN_DNA_LEN,
+        CAL_MAX_DNA_LEN,
+        CAL_MIN_ENZYMES,
+        CAL_MAX_ENZYMES,
+    )
+    rows = _normalize_calibration_rows(request.rows, topology)
+    tolerance = _normalize_calibration_tolerance(request.tolerance)
+    try:
+        return enzyme_activity_calibration(
+            sequence, topology, enzymes, rows, tolerance
+        )
+    except CalibrationInputError as exc:
+        raise _bad_request(str(exc)) from exc
 
 
 @app.get("/")
