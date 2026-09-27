@@ -14,8 +14,8 @@ docker compose up --build
 **http://localhost:8000**
 
 单页内包含全部功能区块：完全酶切、部分酶切丰度分析、同义移除位点、观测条带反推、
-目标片段分离设计、平切片段拼接、环状双酶图谱重建、未知酶规则反推与样本鉴别酶组合；
-各 HTTP API 见下文。
+目标片段分离设计、平切片段拼接、环状双酶图谱重建、未知酶规则反推、样本鉴别酶组合
+与酶活性校准；各 HTTP API 见下文。
 
 停止：`Ctrl+C`（后台运行则用 `docker compose down`）。
 
@@ -153,6 +153,24 @@ docker compose up --build
     升序枚举，首个出现可行组合的大小即最少用酶数），组合按**酶 ID 字典序**
     排列，并列出每个组合下**各样本的长度多重集**；
   - 无解时 HTTP 200 返回 `solvable: false` 与明确说明。
+- **酶活性校准**（页面区块“酶活性校准”/ `POST /api/enzyme-activity-calibration`）：
+  - 复用当前 DNA、拓扑与 **1～3 条**酶规则；DNA 限 **6～300 bp**，预测的
+    **不同切点边界超过 30 个**时拒绝（HTTP 400，每条酶需枚举 11 个概率值）；
+    酶表中的概率输入与本功能无关，概率由观测反推；
+  - 录入 **1～40 条互异**的（**片段长度、类型、每份原始分子的观测丰度**）行及
+    **0～0.1 绝对容差**；丰度须为**非负有限数**（拒绝 NaN/无穷）；
+    **线性仅有普通片段**（`fragment`），**环状**还须区分**未切开全环**
+    （`circular_uncut`，零切点事件）与**单切点全长线性片段**（`linear_full`），
+    后两类长度必须等于序列全长；同一（长度, 类型）只能录入一行；
+  - 各酶**单点切开概率**从 **0、0.1、…、1** 枚举（共 11^k 种元组，k ≤ 3）：
+    **同一边界同一酶命中去重**，**不同酶独立切开**（边界切开概率
+    = 1 − 各酶未切概率之积）；按**现有部分酶切模型**（线性/环状 O(m²) 区间
+    概率和）计算预测丰度，**只核对录入的行，未预测到的行按 0 计**；
+    **切点只扫描一次**并在全部概率组合间复用，**不枚举 2^m 种切开状态**；
+  - 返回各行绝对误差均不超过容差的**全部概率组合**：各酶**按 ID 定序**，
+    组合**按概率元组升序**排列，并给出**各酶的可行概率范围**（最小/最大及
+    全部可行网格值）及每组合每行的预测丰度与误差；无解时 HTTP 200 返回
+    `solvable: false` 与明确说明。
 
 ## 坐标约定（示例）
 
@@ -608,6 +626,82 @@ curl -s -X POST http://localhost:8000/api/sample-discrimination \
 # {"detail":"酶 E1 的识别串（6 位）不能长于任一样本（当前最短样本 4 bp）"}
 ```
 
+`POST /api/enzyme-activity-calibration`
+
+酶活性校准：由部分酶切实测丰度反推每条酶的单点切开概率。复用 `sequence` /
+`topology` / `enzymes[]`（`id` / `site` / `offset` 与酶切接口相同；DNA 限
+6～300 bp、酶 1～3 条，不需要 `cut_probability`），另传 `observations`
+（1～40 条互异行：`length` 正整数、`kind` 类型、`abundance` 非负有限数）与
+`tolerance`（0～0.1 绝对容差，省略为 0）。`kind` 取值：`fragment`（普通片段）、
+`circular_uncut`（环状未切开全环）、`linear_full`（环状单切点全长线性片段）。
+
+```json
+{
+  "sequence": "AAAGATATCGGGGATATCTTTGATATCAAA",
+  "topology": "linear",
+  "enzymes": [
+    {"id": "E1", "site": "GATATC", "offset": 3}
+  ],
+  "observations": [
+    {"length": 6, "kind": "fragment", "abundance": 1.0},
+    {"length": 9, "kind": "fragment", "abundance": 0.5}
+  ],
+  "tolerance": 0
+}
+```
+
+上例中长度 6 的两段（[0,6)、[24,30)）必被切出，丰度为 2p = 1.0；长度 9
+（[6,15) 或 [15,24) 恰好切一处）丰度为 2p(1−p) = 0.5，故唯一可行概率为
+p = 0.5。返回字段：`length`、`topology`、`enzyme_ids`（按 ID 升序）、
+`probability_grid`（`[0, 0.1, …, 1]`）、`boundary_count` / `max_boundaries`
+（切点边界数与 30 的上限）、`cut_sites[]`（`position` / `enzymes`，切点只
+扫描一次）、`observations[]`（`index` / `length` / `kind` /
+`observed_abundance`，按输入序）、`observation_count`、`tolerance`、
+`combination_count_checked`（= 11^酶数）、`feasible_count`、
+`feasible_combinations[]`（`probabilities`（与 `enzyme_ids` 同序的概率元组，
+组合按元组升序）、`max_error`（该组合各行最大绝对误差）、`rows[]`
+（`index` / `length` / `kind` / `observed_abundance` /
+`predicted_abundance` / `error`；预测不到的行预测值与误差按 0 计））、
+`solvable`；有解时另有 `enzyme_ranges[]`（每条酶的 `id`、
+`min_probability`、`max_probability`、`feasible_probabilities` 全部可行网格值）。
+
+```bash
+curl -s -X POST http://localhost:8000/api/enzyme-activity-calibration \
+  -H 'Content-Type: application/json' \
+  -d '{"sequence":"AAAGATATCGGGGATATCTTTGATATCAAA","topology":"linear","enzymes":[{"id":"E1","site":"GATATC","offset":3}],"observations":[{"length":6,"kind":"fragment","abundance":1.0},{"length":9,"kind":"fragment","abundance":0.5}],"tolerance":0}'
+# ... "solvable":true,"combination_count_checked":11,"feasible_count":1,
+#     "feasible_combinations":[{"probabilities":[0.5],"max_error":0.0,...}],
+#     "enzyme_ranges":[{"id":"E1","min_probability":0.5,"max_probability":0.5,
+#                      "feasible_probabilities":[0.5]}]
+```
+
+环状单切点示例（10 bp、切点在 5）：单切点全长线性片段概率 = p、完整环概率 =
+1−p，录入两类全长（均为序列全长 10 bp）即可校准：
+
+```bash
+curl -s -X POST http://localhost:8000/api/enzyme-activity-calibration \
+  -H 'Content-Type: application/json' \
+  -d '{"sequence":"TTGATATCAA","topology":"circular","enzymes":[{"id":"E1","site":"GATATC","offset":3}],"observations":[{"length":10,"kind":"linear_full","abundance":0.4},{"length":10,"kind":"circular_uncut","abundance":0.6}],"tolerance":0}'
+```
+
+无任何概率组合满足全部录入行时返回 HTTP 200、`solvable: false`、空的
+`feasible_combinations` 与 `message` 明确说明，例如要求长度 9 的丰度为 0.9
+（2p(1−p) 的网格取值最大仅 0.5）：
+
+```bash
+curl -s -X POST http://localhost:8000/api/enzyme-activity-calibration \
+  -H 'Content-Type: application/json' \
+  -d '{"sequence":"AAAGATATCGGGGATATCTTTGATATCAAA","topology":"linear","enzymes":[{"id":"E1","site":"GATATC","offset":3}],"observations":[{"length":9,"kind":"fragment","abundance":0.9}],"tolerance":0}'
+# {"...","solvable":false,"feasible_count":0,
+#  "message":"无解：在 11 种概率组合（1 条酶各取 0、0.1、…、1，共 11^1 = 11 种）中，
+#   没有任何组合能使全部 1 行录入数据的预测丰度与观测丰度之差不超过绝对容差 0
+#  （预测不到的（长度, 类型）按 0 计）。"}
+```
+
+参数不满足范围时返回 HTTP 400，`detail` 为中文原因（DNA 长度、酶数、行数、
+重复行、类型与拓扑不符、全长类型长度不等于序列全长、丰度为负/NaN/无穷、
+容差超出 0～0.1、切点边界超过 30 个等）。
+
 ## 不用 Docker 的本地开发
 
 ```bash
@@ -628,8 +722,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 │   ├── circular_map.py    # 纯函数：环状双酶图谱重建（枚举片段环上次序 × 边界归属、二面体规范化、0 基坐标）
 │   ├── rule_inference.py  # 纯函数：未知酶规则反推（候选窗口枚举、多样本严格验证、反向互补等价合并）
 │   ├── discrimination.py  # 纯函数：样本鉴别酶组合（切点复用、枚举非空组合、两两可区分判定、最少用酶）
-│   ├── main.py            # FastAPI：参数校验、/api/digest、/api/partial-digest、/api/synonymous-redesign、/api/digest-inference、/api/fragment-isolation、/api/fragment-assembly、/api/circular-map-reconstruction、/api/enzyme-rule-inference、/api/sample-discrimination、页面路由
-│   └── static/index.html  # 原生 HTML/CSS/JS 单页（含概率输入、丰度表、同义重设计、条带反推、目标片段分离、平切片段拼接、环状双酶图谱重建、未知酶规则反推与样本鉴别酶组合）
+│   ├── calibration.py     # 纯函数：酶活性校准（切点只扫一次、枚举 11^k 概率网格、只核对录入行、各酶可行范围）
+│   ├── main.py            # FastAPI：参数校验、/api/digest、/api/partial-digest、/api/synonymous-redesign、/api/digest-inference、/api/fragment-isolation、/api/fragment-assembly、/api/circular-map-reconstruction、/api/enzyme-rule-inference、/api/sample-discrimination、/api/enzyme-activity-calibration、页面路由
+│   └── static/index.html  # 原生 HTML/CSS/JS 单页（含概率输入、丰度表、同义重设计、条带反推、目标片段分离、平切片段拼接、环状双酶图谱重建、未知酶规则反推、样本鉴别酶组合与酶活性校准）
 ├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml

@@ -293,6 +293,44 @@
     <div class="meta">目标长度：<strong id="asmTargetLen">0</strong> bp</div>
   </section>
 
+  <section class="card" id="calibrationCard" style="margin-top:18px;">
+    <h2>酶活性校准参数</h2>
+    <div class="legend" style="margin-bottom:10px;">
+      复用上方 DNA 序列、拓扑与 <strong>1～3 条</strong>酶规则（DNA 限 <strong>6～300 bp</strong>，
+      预测的不同切点边界超过 <strong>30 个</strong>时拒绝；酶表中的概率输入与本功能无关，概率由观测反推）。
+      录入 <strong>1～40 条互异</strong>的（片段长度、类型、每份原始分子的观测丰度）行与
+      <strong>0～0.1</strong> 绝对容差：线性仅有普通片段；环状还须区分<strong>未切开全环</strong>与
+      <strong>单切点全长线性片段</strong>。各酶单点切开概率从 <strong>0、0.1、…、1</strong> 枚举
+      （同一边界同酶命中去重，不同酶独立切开），按现有部分酶切模型计算预测丰度，
+      <strong>只核对录入的行，未预测到的行按 0 计</strong>；切点只扫描一次，不枚举切开状态。
+    </div>
+    <table class="enzyme-table">
+      <thead>
+        <tr>
+          <th style="width:8%">#</th>
+          <th style="width:22%">片段长度 (bp)</th>
+          <th style="width:40%">类型</th>
+          <th style="width:26%">观测丰度（每份原始分子，≥ 0）</th>
+          <th style="width:4%"></th>
+        </tr>
+      </thead>
+      <tbody id="calibrationRows"></tbody>
+    </table>
+    <div class="toolbar">
+      <span class="legend">同一（长度, 类型）只能录入一行；两种全长结果的长度必须等于序列全长。</span>
+      <button class="btn" id="addCalibrationRow" type="button">+ 添加录入行</button>
+    </div>
+    <div class="infer-grid" style="margin-top:10px;">
+      <div class="cell narrow">
+        <label class="field" for="calTolerance">绝对容差（0～0.1）</label>
+        <input id="calTolerance" type="number" min="0" max="0.1" step="0.01" value="0">
+      </div>
+    </div>
+    <div class="run-row" style="margin-top:10px;">
+      <button class="btn primary" id="runCalibration" type="button">酶活性校准</button>
+    </div>
+  </section>
+
   <section class="card" id="circularMapCard" style="margin-top:18px;">
     <h2>环状双酶图谱重建</h2>
     <div class="legend" style="margin-bottom:10px;">
@@ -451,6 +489,11 @@
   <section class="card" id="assemblyResults" style="margin-top:18px; display:none;">
     <h2>平切片段拼接结果</h2>
     <div id="assemblyBody"></div>
+  </section>
+
+  <section class="card" id="calibrationResults" style="margin-top:18px; display:none;">
+    <h2>酶活性校准结果</h2>
+    <div id="calibrationBody"></div>
   </section>
 </div>
 
@@ -1713,6 +1756,256 @@ document.getElementById("runDiscrimination").addEventListener("click", () => {
     buildDiscriminationRequest);
 });
 
+// ---------- 酶活性校准 ----------
+const calibrationRowsBody = document.getElementById("calibrationRows");
+
+const CAL_KIND_OPTIONS = {
+  fragment: ["fragment", "普通片段"],
+  circular_uncut: ["circular_uncut", "完整环（零切点，未切开全环）"],
+  linear_full: ["linear_full", "全长线性片段（单切点）"],
+};
+
+function refreshCalibrationKindOptions() {
+  const topology = document.querySelector('input[name="topology"]:checked').value;
+  for (const row of calibrationRowsBody.rows) {
+    const select = row.querySelector(".cal-kind");
+    const current = select.value;
+    const kinds = topology === "circular"
+      ? ["fragment", "circular_uncut", "linear_full"]
+      : ["fragment"];
+    select.innerHTML = kinds.map((k) => {
+      const [value, label] = CAL_KIND_OPTIONS[k];
+      return `<option value="${value}">${label}</option>`;
+    }).join("");
+    if (kinds.includes(current)) select.value = current;
+  }
+}
+
+document.querySelectorAll('input[name="topology"]').forEach((radio) => {
+  radio.addEventListener("change", refreshCalibrationKindOptions);
+});
+
+function addCalibrationRow(length = "", kind = "fragment", abundance = "") {
+  if (calibrationRowsBody.rows.length >= 40) {
+    alert("最多录入 40 行");
+    return;
+  }
+  const tr = document.createElement("tr");
+  tr.innerHTML =
+    '<td class="cal-idx hit-detail"></td>' +
+    '<td><input class="cal-len" type="number" min="1" step="1" placeholder="片段长度"></td>' +
+    '<td><select class="cal-kind" style="width:100%;border:1px solid var(--border);border-radius:5px;padding:6px 7px;font-size:13px;"></select></td>' +
+    '<td><input class="cal-ab" type="number" min="0" step="0.01" placeholder="观测丰度，如 0.5"></td>' +
+    '<td><button class="btn del" type="button">删除</button></td>';
+  tr.querySelector(".cal-len").value = length;
+  tr.querySelector(".cal-ab").value = abundance;
+  tr.querySelector(".del").addEventListener("click", () => {
+    tr.remove();
+    renumberCalibrationRows();
+  });
+  calibrationRowsBody.appendChild(tr);
+  refreshCalibrationKindOptions();
+  // 线性时只有普通片段可选；refresh 已重建选项，此处选择目标类型（若可选）
+  const select = tr.querySelector(".cal-kind");
+  if ([...select.options].some((o) => o.value === kind)) select.value = kind;
+  renumberCalibrationRows();
+}
+
+function renumberCalibrationRows() {
+  for (let i = 0; i < calibrationRowsBody.rows.length; i++) {
+    calibrationRowsBody.rows[i].querySelector(".cal-idx").textContent = i + 1;
+  }
+}
+
+document.getElementById("addCalibrationRow").addEventListener("click", () => addCalibrationRow());
+
+function buildCalibrationRequest() {
+  const sequence = cleanSequence();
+  if (sequence.length < 6 || sequence.length > 300) {
+    throw new Error(`酶活性校准仅接受长度 6～300 bp 的 DNA（当前 ${sequence.length} bp）`);
+  }
+  if (!DNA_RE.test(sequence)) {
+    throw new Error("DNA 序列只能包含 A、C、G、T 字符");
+  }
+  const topology = document.querySelector('input[name="topology"]:checked').value;
+
+  if (enzymeRows.rows.length < 1 || enzymeRows.rows.length > 3) {
+    throw new Error(`酶活性校准须选择 1～3 条酶（当前 ${enzymeRows.rows.length} 条）`);
+  }
+  const seen = new Set();
+  const enzymes = [];
+  for (const row of enzymeRows.rows) {
+    const id = row.querySelector(".e-id").value.trim();
+    const site = row.querySelector(".e-site").value.replace(/\s+/g, "").toUpperCase();
+    const offsetRaw = row.querySelector(".e-offset").value.trim();
+    const offset = Number(offsetRaw);
+    if (!id) throw new Error("每条酶规则都必须填写 ID");
+    if (seen.has(id)) throw new Error(`酶 ID 重复：${id}`);
+    seen.add(id);
+    if (site.length < 3 || site.length > 12) {
+      throw new Error(`酶 ${id} 的识别串长度须为 3～12 位（当前 ${site.length} 位）`);
+    }
+    if (!IUPAC_RE.test(site)) {
+      throw new Error(`酶 ${id} 的识别串含非法 IUPAC 字符`);
+    }
+    if (site.length > sequence.length) {
+      throw new Error(`酶 ${id} 的识别串（${site.length} 位）长于 DNA 序列（${sequence.length} 位）`);
+    }
+    if (offsetRaw === "" || !Number.isInteger(offset) || offset < 0 || offset > site.length) {
+      throw new Error(`酶 ${id} 的切割偏移须为 0～${site.length} 的整数`);
+    }
+    enzymes.push({ id, site, offset });
+  }
+
+  const count = calibrationRowsBody.rows.length;
+  if (count < 1 || count > 40) {
+    throw new Error(`录入行数须为 1～40 条（当前 ${count} 条）`);
+  }
+  const n = sequence.length;
+  const observations = [];
+  const seenRows = new Set();
+  for (let i = 0; i < count; i++) {
+    const row = calibrationRowsBody.rows[i];
+    const label = `录入行 ${i + 1}`;
+    const lenRaw = row.querySelector(".cal-len").value.trim();
+    const length = Number(lenRaw);
+    if (lenRaw === "" || !Number.isInteger(length) || length < 1 || length > n) {
+      throw new Error(`${label} 的片段长度须为 1～${n} bp 的整数（当前 “${lenRaw}”）`);
+    }
+    const kind = row.querySelector(".cal-kind").value;
+    if (topology === "linear" && kind !== "fragment") {
+      throw new Error(`${label}：线性拓扑只能录入普通片段（fragment）`);
+    }
+    if ((kind === "circular_uncut" || kind === "linear_full") && length !== n) {
+      const kindLabel = CAL_KIND_OPTIONS[kind][1];
+      throw new Error(`${label} 的${kindLabel}长度须为序列全长 ${n} bp（当前 ${length} bp）`);
+    }
+    const abRaw = row.querySelector(".cal-ab").value.trim();
+    const abundance = Number(abRaw);
+    if (abRaw === "" || !Number.isFinite(abundance) || abundance < 0) {
+      throw new Error(`${label} 的观测丰度须为非负有限数（当前 “${abRaw}”）`);
+    }
+    const dedupKey = `${length}/${kind}`;
+    if (seenRows.has(dedupKey)) {
+      throw new Error(`${label} 重复：（长度 ${length}、类型 ${CAL_KIND_OPTIONS[kind][1]}）只能录入一次`);
+    }
+    seenRows.add(dedupKey);
+    observations.push({ length, kind, abundance });
+  }
+
+  const tolRaw = document.getElementById("calTolerance").value.trim();
+  const tolerance = Number(tolRaw);
+  if (tolRaw === "" || !Number.isFinite(tolerance) || tolerance < 0 || tolerance > 0.1) {
+    throw new Error("绝对容差须为 0～0.1 之间的数");
+  }
+
+  return { sequence, topology, enzymes, observations, tolerance };
+}
+
+function renderCalibration(data) {
+  const body = document.getElementById("calibrationBody");
+  const topoText = data.topology === "circular" ? "环状" : "线性";
+
+  const headChips = [
+    `<span class="chip">拓扑：${topoText}</span>`,
+    `<span class="chip">序列长度：${data.length} bp</span>`,
+    `<span class="chip">酶：${data.enzyme_ids.map(escapeHtml).join("、")}</span>`,
+    `<span class="chip">切点边界：${data.boundary_count} 个（上限 ${data.max_boundaries}）</span>`,
+    `<span class="chip">录入行：${data.observation_count} 条</span>`,
+    `<span class="chip">绝对容差：${fmtNum(data.tolerance)}</span>`,
+    `<span class="chip">检查概率组合：${data.combination_count_checked} 种</span>`,
+  ];
+
+  const cutRowsHtml = data.cut_sites.length === 0
+    ? '<tr><td colspan="2" class="end-note">未找到任何切点：所有酶的预测丰度均为 0（环状仅可能有完整环）。</td></tr>'
+    : data.cut_sites.map((site) => `<tr>
+        <td><strong>${site.position}</strong></td>
+        <td>${site.enzymes.map((e) => `<span class="tag">${escapeHtml(e)}</span>`).join("")}</td>
+      </tr>`).join("");
+  const cutSitesHtml =
+    `<h2 style="margin-top:8px;">切点边界（全部酶只扫描一次，同边界同酶命中已去重）</h2>`
+    + `<table><thead><tr><th style="width:20%">边界坐标</th><th>对应酶</th></tr></thead>`
+    + `<tbody>${cutRowsHtml}</tbody></table>`;
+
+  const obsRows = data.observations.map((row) => `<tr>
+      <td>${row.index}</td>
+      <td>${row.length}</td>
+      <td>${KIND_LABELS[row.kind] || row.kind}</td>
+      <td>${fmtNum(row.observed_abundance)}</td>
+    </tr>`).join("");
+  const obsHtml =
+    `<h2 style="margin-top:14px;">录入数据（按输入序）</h2>`
+    + `<table><thead><tr>`
+    + `<th style="width:8%">#</th><th style="width:18%">片段长度</th>`
+    + `<th style="width:40%">类型</th><th>观测丰度</th>`
+    + `</tr></thead><tbody>${obsRows}</tbody></table>`;
+
+  if (!data.solvable) {
+    body.innerHTML =
+      `<div class="summary">${headChips.join("")}</div>`
+      + `<div class="infer-warn"><strong>无解：</strong>${escapeHtml(data.message.replace(/^无解：/, ""))}</div>`
+      + cutSitesHtml + obsHtml;
+    document.getElementById("calibrationResults").style.display = "block";
+    return;
+  }
+
+  headChips.push(`<span class="chip">可行组合数：<strong>${data.feasible_count}</strong></span>`);
+
+  const rangeRows = data.enzyme_ranges.map((r) => `<tr>
+      <td><strong>${escapeHtml(r.id)}</strong></td>
+      <td>${fmtNum(r.min_probability)}</td>
+      <td>${fmtNum(r.max_probability)}</td>
+      <td><code class="seq">[${r.feasible_probabilities.map(fmtNum).join(", ")}]</code></td>
+    </tr>`).join("");
+  const rangeHtml =
+    `<h2 style="margin-top:14px;">各酶可行概率范围（按酶 ID 定序）</h2>`
+    + `<table><thead><tr>`
+    + `<th style="width:18%">酶 ID</th><th style="width:14%">最小可行概率</th>`
+    + `<th style="width:14%">最大可行概率</th><th>全部可行概率值（网格 0～1）</th>`
+    + `</tr></thead><tbody>${rangeRows}</tbody></table>`;
+
+  const comboBlocks = data.feasible_combinations.map((combo, i) => {
+    const tuple = `(${combo.probabilities.map(fmtNum).join(", ")})`;
+    const probCells = combo.probabilities.map((p, j) =>
+      `<span class="tag">${escapeHtml(data.enzyme_ids[j])} = ${fmtNum(p)}</span>`).join(" ");
+    const rowLines = combo.rows.map((row) => `<tr>
+        <td>${row.index}</td>
+        <td>${row.length}</td>
+        <td>${KIND_LABELS[row.kind] || row.kind}</td>
+        <td>${fmtNum(row.observed_abundance)}</td>
+        <td>${fmtNum(row.predicted_abundance)}</td>
+        <td>${fmtNum(row.error)}</td>
+      </tr>`).join("");
+    const maxShown = data.feasible_combinations.length > 12;
+    return `<details class="cal-details"${i < 12 || !maxShown ? " open" : ""} style="margin:6px 0;">
+      <summary><strong>#${i + 1}</strong> 概率元组 ${tuple}　${probCells}
+        <span class="hit-detail">（最大行误差 ${fmtNum(combo.max_error)}）</span></summary>
+      <table style="margin-top:6px;"><thead><tr>
+        <th style="width:6%">#</th><th style="width:12%">长度</th><th style="width:28%">类型</th>
+        <th style="width:16%">观测丰度</th><th style="width:16%">预测丰度</th><th>绝对误差</th>
+      </tr></thead><tbody>${rowLines}</tbody></table>
+    </details>`;
+  }).join("");
+
+  body.innerHTML =
+    `<div class="summary">${headChips.join("")}</div>`
+    + cutSitesHtml
+    + obsHtml
+    + rangeHtml
+    + `<h2 style="margin-top:14px;">全部可行概率组合（按概率元组升序）</h2>`
+    + comboBlocks
+    + `<div class="legend">组合按概率元组（各酶按 ID 定序）升序排列；每行只核对录入的（长度, 类型），`
+    + `预测丰度表中没有的行按 0 计；各组合的各行绝对误差均不超过容差 ${fmtNum(data.tolerance)}。</div>`;
+
+  document.getElementById("calibrationResults").style.display = "block";
+}
+
+document.getElementById("runCalibration").addEventListener("click", () => {
+  const btn = document.getElementById("runCalibration");
+  runCalculation(btn, "酶活性校准", "/api/enzyme-activity-calibration",
+    renderCalibration, buildCalibrationRequest);
+});
+
 // 预置一条示例酶并填入示例序列，方便直接试用
 addEnzymeRow("EcoRV-like", "GATATC", "3", "0.8");
 sequenceInput.value = "AAAGATATCGGGGATATCTTTGATATCAAA";
@@ -1728,6 +2021,9 @@ addRuleSample("AAAGATATCGGGGATATCTTTGATATCAAA", "linear", "6, 15, 24");
 // 样本鉴别示例：线性 30 bp（切于 6、15、24 → 4 片）与环状 10 bp（单切点 → 全长 1 片）
 addDiscSample("AAAGATATCGGGGATATCTTTGATATCAAA", "linear");
 addDiscSample("TTGATATCAA", "circular");
+// 酶活性校准示例：默认酶 GATATC/偏移 3、概率 0.5，线性 30 bp 长度 6 与 9 的丰度恰为 1.0 与 0.5
+addCalibrationRow("6", "fragment", "1.0");
+addCalibrationRow("9", "fragment", "0.5");
 </script>
 </body>
 </html>
